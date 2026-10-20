@@ -19,9 +19,32 @@ Tim: "add risk, clue, battleship, connect four, stratego, clue, checkers, pandem
 | Learn and Settings | done. Settings has Quit game / Leave room while a game runs |
 | QA report 2026-10-20 | all items fixed and retested headless (see chat.md) |
 | Design pass 2026-10-20 | done: no sticky hover on phones, cream weapon tokens, bigger pawns, readable hand cards, sheet buttons stay on screen, board never resizes between turns (see chat.md) |
+| Sounds and effects 2026-10-20 | done: js/fx.js (shared copy of `_fx/fx.js`, never edit) + js/sfx.js (Clue's events → sounds). Settings → "Sound & effects". tests/fx.test.js |
+
+## Sounds and effects: event → sound map (js/sfx.js)
+Driven by the difference between two public snapshots, so local, computer and online moves all sound the same.
+| Event | Sound | Effect |
+|---|---|---|
+| New game dealt | `shuffle`, then `cardDeal` per card in your hand | hand cards fly in from the board centre |
+| Roll | `diceRoll`, then `diceLand` per die at ~400 ms (die tumble) | existing tumble |
+| Walk | `step` per square, paced with the walk | existing walk |
+| Enter a room | `creak` (door) at the end of the walk | |
+| Secret passage | `whoosh` | |
+| Suggestion | `sting` (dun-dun-DUNN), `slide` if a token is summoned, a soft knock per player who says No | suggester chip pulses |
+| Card shown | `cardFlip` if shown to you, else `cardSlide`; nobody showed = `ding` | face-down card flies shower → asker |
+| You must show a card | `prompt` (alert) | |
+| Accusation | `drumroll`; wrong = `stamp` on the last beat | wrong: chip shakes + red flash; the "accused wrongly" toast waits for the beat when game sounds are on |
+| Becomes YOUR turn | `turn` (alert) | action bar flashes |
+| Illegal board tap / refused action | `error` | |
+| Notes gain new ✓/✗ | `scribble` | |
+| Notes narrow to one answer | celebrate `big` (sparkles) | once per game |
+| Game over | celebrate `win` (winner's colours) or `lose`, as the result sheet opens | |
+| Notepad tab: save a suggestion/accusation | `scribble`; a refused save = `error` | |
+Animations off adds `html.fx-still` (all CSS animations/transitions off) and tokens jump instead of walking (one knock/creak).
 
 ## Standing instructions (Tim's words)
 - "add risk, clue, battleship, connect four, stratego, clue, checkers, pandemic, splendor, king of tokyo, 7 wonders, and evolution to the list of games."
+- 2026-10-20: "add opptional sounds you can add to the games that reflect what's happening in the game accurately as well as win celebrations, and other fun annimations to go along with everything. Just make sure everything is customizable in the settings so the user can play as preffered."
 - His global rules apply: $0, no permission questions, he decides looks and wording, check at 393 px and on desktop.
 
 ## Traps
@@ -37,6 +60,7 @@ Tim: "add risk, clue, battleship, connect four, stratego, clue, checkers, pandem
 - Hover styles live inside `@media (hover: hover)`. On a phone a tap leaves :hover stuck, and that used to grey out the blue and gold buttons.
 - The action bar always renders its `.acts` row (empty on others' turns). Removing it makes the board resize every turn.
 - Bump `css/style.css?v=N` in index.html after CSS changes. Never put a query string on JS (see the app.js trap).
+- fx.js is a byte-for-byte copy of `../_fx/fx.js`; Clue-only sounds go in js/sfx.js via `FX.define`. Its `.switch`/`.seg` fallbacks tie on specificity and load later, so style.css overrides them under `.fx-set`.
 - online.js is a copy of `_online/online.js`. Another builder is fixing seat takeover there; re-copy it when the manager says.
 
 ## Decisions
@@ -50,6 +74,8 @@ Tim: "add risk, clue, battleship, connect four, stratego, clue, checkers, pandem
 
 ## NOT verified
 - On Tim's real iPhone (only WebKit via phone-view).
+- Sounds were never heard by a person: headless WebKit has no Web Audio; Chrome headless counted 198 plays in one bot game. Confetti checked in Chrome (headless WebKit runs only ~2 frames/s).
+- Online sounds: same code path as local (snapshot diff) but not run in a two-browser test.
 - The 2016+ board changes aren't modelled.
 - UK answering-to-the-right isn't modelled.
 - QA fixes checked by reading the code only, not clicked through: the notepad refusing "nobody showed" on a card you hold, room chips clearing after a contradiction, triple-tap Suggest logging once, emoji/long names in notepad headers.

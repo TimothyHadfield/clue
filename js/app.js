@@ -1,4 +1,6 @@
 /* Clue — the page. Play (you + computers, or online), Notepad (real table), Learn, Settings. */
+import "./fx.js";
+import { eventsFor, perform, defineSounds, DEAL_AT, DEAL_GAP } from "./sfx.js";
 import { game, movesFor, canPassage, canSuggestHere } from "./game.js";
 import { createOnline } from "./online.js";
 import { EDITIONS, RULESETS, SUSPECT_COLORS, cardName, shortName } from "./cards.js";
@@ -10,6 +12,13 @@ import { recordsFor, LEVELS } from "./ai.js";
 import { initNotepad, refreshNotepad } from "./notepad.js";
 import { $, $$, esc, store, settings, saveSettings, toast, sheet, closeSheet, sheetOpen, pushLayer, popLayer, takeOwnBack, pct, heat, help, askSolver } from "./ui.js";
 import { initLearn } from "./learn.js";
+
+// sounds, celebrations and animations (all switchable in Settings → Sound & effects)
+const FX = window.FX;
+FX.init({ game: "clue", accent: "#6ea8fe" });
+defineSounds(FX);
+const stillPage = () => document.documentElement.classList.toggle("fx-still", !FX.settings.animations);
+stillPage(); FX.onChange(stillPage);
 
 const E = () => EDITIONS[settings.edition] || EDITIONS.classic;
 const cname = (c) => cardName(settings.edition, c);
@@ -71,7 +80,7 @@ function localRoom({ seats, options, state }) {
     act(a) {
       if (!game.toAct(st).includes(humanSeat)) return { ok: false, message: "Not your turn" };
       try { st = game.apply(JSON.parse(JSON.stringify(st)), humanSeat, a, Math.random); }
-      catch (e) { toast(e.message); return { ok: false, message: e.message }; }
+      catch (e) { FX.play("error"); toast(e.message); return { ok: false, message: e.message }; }
       emit(); return { ok: true };
     },
     start() { emit(); },
@@ -149,7 +158,55 @@ function onSnap(snap) {
   const prev = snapNow;
   snapNow = snap;
   if (first) buildGame(snap);
-  animating = animating.then(() => renderGame(snap, prev)).catch((e) => console.error(e));
+  animating = animating.then(() => renderGame(snap, prev, true)).catch((e) => console.error(e));
+}
+
+// ------------------------------------------------------------------ sounds and effects for each new snapshot
+function fxCtx(snap) {
+  const chipEl = (s) => gameEl && $(`.pl[data-seat="${s}"]`, gameEl);
+  return {
+    stepMs: 110 / settings.speed, me: snap.mySeat, pub: snap.pub, overMs: 900 / settings.speed,
+    el: { chip: chipEl, bar: () => gameEl && $("#bar", gameEl) },
+    colors: (s) => [SUSPECT_COLORS[snap.pub.chars[s]], "#f0b354", "#e8eaf0", "#6ea8fe", "#6ee7a8"],
+    // a face-down card slides from the player who showed it to the player who asked
+    fly: (a, b) => {
+      const from = chipEl(a), to = chipEl(b);
+      if (!from || !to || !FX.settings.animations) return;
+      const r = from.getBoundingClientRect();
+      const g = document.createElement("div");
+      g.className = "fx-cardback";
+      g.style.left = r.left + r.width / 2 - 9 + "px"; g.style.top = r.top + r.height / 2 - 13 + "px";
+      document.body.appendChild(g);
+      FX.flyTo(g, to, { clone: false, scale: 1, duration: 520 }).then(() => g.remove());
+    },
+    // the dealt cards fly from the middle of the board into your hand
+    deal: () => {
+      if (!FX.settings.animations || !gameEl) return;
+      const b = $("#bw", gameEl).getBoundingClientRect(), cx = b.left + b.width / 2, cy = b.top + b.height / 2;
+      const sp = FX.settings.animSpeed === "fast" ? 0.55 : 1;
+      $$("#hand .cardf", gameEl).forEach((c, i) => {
+        const r = c.getBoundingClientRect();
+        try {
+          c.animate([{ transform: `translate(${cx - r.left - r.width / 2}px, ${cy - r.top - r.height / 2}px) scale(.45) rotate(-12deg)`, opacity: 0 }, { transform: "none", opacity: 1 }],
+            { duration: 300 * sp, delay: Math.max(0, DEAL_AT + i * DEAL_GAP - 300 * sp), easing: "cubic-bezier(.3,.7,.3,1)", fill: "backwards" });
+        } catch (e) {}
+      });
+    },
+  };
+}
+// the notes: a pencil mark when new ✓/✗ appear, and a sparkle when the case is cracked
+let notesFx = { key: "", marks: -1, solved: false };
+function notesEffects(r, snap) {
+  const n = snap.pub.n, key = snap.pub.chars.join() + "|" + snap.mine.hand.join();
+  let marks = 0;
+  for (const row of r.prob) for (let p = 0; p <= n; p++) if (row[p] > 0.9995 || row[p] < 0.0005) marks++;
+  if (notesFx.key !== key) { notesFx = { key, marks, solved: r.envCount === 1 }; return; }
+  if (marks > notesFx.marks) FX.play("scribble");
+  notesFx.marks = marks;
+  if (r.envCount === 1 && r.exact !== false && !notesFx.solved && !snap.pub.over) {
+    notesFx.solved = true;
+    FX.celebrate({ kind: "big", at: $("#bw", gameEl) });
+  }
 }
 
 function buildGame(snap) {
@@ -204,11 +261,13 @@ function placePieces(pub, only, instant) {
 }
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
-async function renderGame(snap, prev) {
+async function renderGame(snap, prev, fresh) {
   const pub = snap.pub;
   const pp = prev && prev.pub;
-  // walk the token that just moved, square by square
-  if (pp && pub.last && pub.last.t === "move" && pp.turnNo === pub.turnNo && !(pp.last && pp.last === pub.last)) {
+  // sounds and effects for what just happened (new snapshots only, not a settings redraw)
+  if (fresh) { try { perform(eventsFor(pp, pub, snap.mySeat), FX, fxCtx(snap)); } catch (e) { console.warn(e); } }
+  // walk the token that just moved, square by square (Animations off: it just jumps)
+  if (FX.settings.animations && pp && pub.last && pub.last.t === "move" && pp.turnNo === pub.turnNo && !(pp.last && pp.last === pub.last)) {
     const sus = pub.chars[pub.last.by];
     const blocked = new Set(); pp.pos.forEach((p, i) => { if (i !== sus && p.sq != null) blocked.add(p.sq); });
     const path = walkPath(pp.pos[sus], pub.pos[sus], blocked);
@@ -276,7 +335,9 @@ function announce(snap, prev) {
       else toast("Nobody could show a card!", 3000);
     }
   } else if (L.t === "accuse" && !L.correct) {
-    toast(`${seatName(pub, L.by, snap)} accused wrongly — out`, 2600);
+    // with game sounds on, the verdict lands on the drumroll's last beat
+    const msg = `${seatName(pub, L.by, snap)} accused wrongly — out`;
+    if (FX.settings.sound && FX.settings.moves) setTimeout(() => toast(msg, 2600), 950); else toast(msg, 2600);
   } else if (L.t === "roll" && L.by !== snap.mySeat) {
     bubble(L.by, "Rolled " + L.dice.reduce((a, b) => a + b, 0));
   } else if (L.t === "passage" && L.by !== snap.mySeat) {
@@ -370,7 +431,7 @@ async function act(a) {
   if (k === lastAct.k && t - lastAct.t < 600) return;   // a double tap sends once
   lastAct = { k, t };
   closeSheet();
-  if (snapNow.mode === "online") { const r = await online.act(a); if (!r.ok) toast(r.message); }
+  if (snapNow.mode === "online") { const r = await online.act(a); if (!r.ok) { FX.play("error"); toast(r.message); } }
   else room.act(a);
 }
 
@@ -379,9 +440,10 @@ function onBoardClick(e) {
   const snap = snapNow;
   if (!snap || myTurnPhase(snap) !== "move") return;
   const t = e.target.closest("[data-sq],[data-room]");
-  if (!t) return;
+  if (!t) { FX.play("error"); return; }   // a square you can't reach this turn
   if (t.dataset.sq != null) act({ type: "move", sq: +t.dataset.sq });
   else if (t.classList.contains("can")) act({ type: "move", room: +t.dataset.room });
+  else FX.play("error");
 }
 function renderHighlights(snap) {
   const svg = $("svg.board", gameEl), pub = snap.pub;
@@ -421,6 +483,7 @@ function updateNotes(snap) {
   askSolver({ n: pub.n, sizes: pub.sizes, facts, rank: needRank ? { me, room: roomNow, samples: 500, seed: pub.turnNo } : null }).then((r) => {
     if (notesKey !== key) return;
     if (!r.ok) return;
+    try { notesEffects(r, snap); } catch (e) {}
     notes = r;
     if (r.ranked) { ranked = r.ranked; rankKey = key + roomNow; }
     if (snapNow) { drawNotes(snapNow); renderHighlights(snapNow); }
@@ -666,6 +729,7 @@ function settingsView() {
     <div class="setrow"><div class="lbl">Show odds<small>Percentages on cards and rooms</small></div><label class="switch"><input type="checkbox" id="sOdds" ${settings.odds ? "checked" : ""}><span></span></label></div>
     <div class="setrow"><div class="lbl">Speed<small>Computer turns and walking</small></div>${seg("speed", [[0.6, "Slow"], [1, "Normal"], [2, "Fast"]])}</div>
   </div>
+  <div class="panel"><div class="label">Sound &amp; effects</div><div id="fxSet"></div></div>
   ${snapNow && snapNow.pub && !snapNow.pub.over ? `<div class="panel"><div class="setrow"><div class="lbl">${snapNow.mode === "online" ? "Leave room" : "Quit game"}<small>${snapNow.mode === "online" ? "A computer takes your seat" : "Ends the game you're playing"}</small></div><button class="btn small danger" id="sQuit">${snapNow.mode === "online" ? "Leave" : "Quit"}</button></div></div>` : ""}
   <div class="panel"><div class="setrow"><div class="lbl">Reset record<small>Your win/loss count</small></div><button class="btn small" id="sReset">Reset</button></div></div></div>`;
   $$("[data-key]", el).forEach((g) => $$("button", g).forEach((b) => (b.onclick = () => {
@@ -673,6 +737,7 @@ function settingsView() {
     settings[k] = k === "edition" || k === "rules" ? v : +v; saveSettings(); settingsView();
     if (k === "edition" && snapNow && snapNow.pub && gameEl) { buildGame(snapNow); renderGame(snapNow, null); }
   })));
+  FX.renderSettings($("#fxSet", el));
   $("#sOdds", el).onchange = (e) => { settings.odds = e.target.checked; saveSettings(); if (snapNow) { if (snapNow.pub && gameEl) renderGame(snapNow, null); renderHighlights(snapNow); drawNotes(snapNow); } };
   const q = $("#sQuit", el);
   if (q) q.onclick = () => sheet(`<h3>${snapNow.mode === "online" ? "Leave this room?" : "Quit this game?"}</h3><div class="row" style="justify-content:flex-end"><button class="btn ghost" data-close>Cancel</button><button class="btn danger" id="qYes">${snapNow.mode === "online" ? "Leave" : "Quit"}</button></div>`,

@@ -174,10 +174,11 @@ function suggestionSheet() {
     const passes = [];
     for (let k = 1; k < n(); k++) { const p = (f.by + k) % n(); if (p === f.shower) break; passes.push(p); }
     const held = f.cards.filter((c) => T.hand.includes(c));
-    if (passes.includes(T.me) && held.length) { toast(`You hold ${sname(held[0])}, so you would have shown it`); return; }
-    if (f.shower === T.me && !held.length) { toast("You hold none of those cards"); return; }
+    if (passes.includes(T.me) && held.length) { if (window.FX) window.FX.play("error"); toast(`You hold ${sname(held[0])}, so you would have shown it`); return; }
+    if (f.shower === T.me && !held.length) { if (window.FX) window.FX.play("error"); toast("You hold none of those cards"); return; }
     const rec = { t: "suggest", by: f.by, cards: f.cards.slice(), passes, shower: f.shower };
     if (f.shown != null) rec.shown = f.shown;
+    if (window.FX) window.FX.play("scribble");
     T.records.push(rec); save(); closeSheet(); mainView();
   };
 }
@@ -193,5 +194,5 @@ function accusationSheet() {
     $("#aSave", el).disabled = !(f.by >= 0 && f.cards.every((c) => c >= 0));
   };
   draw();
-  $("#aSave", el).onclick = () => { T.records.push({ t: "accuse", by: f.by, cards: f.cards.slice(), correct: false }); save(); closeSheet(); mainView(); };
+  $("#aSave", el).onclick = () => { if (window.FX) window.FX.play("scribble"); T.records.push({ t: "accuse", by: f.by, cards: f.cards.slice(), correct: false }); save(); closeSheet(); mainView(); };
 }
