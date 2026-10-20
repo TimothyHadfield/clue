@@ -1,7 +1,7 @@
 # Clue — progress
 
 ## START HERE
-Last updated 2026-10-20 (QA-report fixes). Read in this order: this file, CLAUDE.md, docs/rules-check.md, docs/ideas.md, chat.md.
+Last updated 2026-10-20 (visual design pass). Read in this order: this file, CLAUDE.md, docs/rules-check.md, docs/ideas.md, chat.md.
 Live: https://timothyhadfield.github.io/clue/ · Repo: https://github.com/TimothyHadfield/clue
 
 ## Goal right now
@@ -18,6 +18,7 @@ Tim: "add risk, clue, battleship, connect four, stratego, clue, checkers, pandem
 | Online | works: two-browser test (tools/two-browsers.mjs) passes. If a player's tab closes, the host hands their seat to a computer about 20 s after presence marks it offline (~100 s in all, measured). The host can also tap a dashed chip to hand over at once |
 | Learn and Settings | done. Settings has Quit game / Leave room while a game runs |
 | QA report 2026-10-20 | all items fixed and retested headless (see chat.md) |
+| Design pass 2026-10-20 | done: no sticky hover on phones, cream weapon tokens, bigger pawns, readable hand cards, sheet buttons stay on screen, board never resizes between turns (see chat.md) |
 
 ## Standing instructions (Tim's words)
 - "add risk, clue, battleship, connect four, stratego, clue, checkers, pandemic, splendor, king of tokyo, 7 wonders, and evolution to the list of games."
@@ -33,6 +34,9 @@ Tim: "add risk, clue, battleship, connect four, stratego, clue, checkers, pandem
 - Under load, creating an online room can take more than 20 s, so the test tools wait 60 s.
 - Back button: sheets and the phone Notes panel are history layers (pushLayer/popLayer in js/ui.js). `closeSheet` used as an onclick gets an event, which is why it checks `fromBack === true`.
 - The Names setting belongs to the viewer, not the game. Never copy `pub.opts.edition` into settings (that was the "reset to Classic" bug).
+- Hover styles live inside `@media (hover: hover)`. On a phone a tap leaves :hover stuck, and that used to grey out the blue and gold buttons.
+- The action bar always renders its `.acts` row (empty on others' turns). Removing it makes the board resize every turn.
+- Bump `css/style.css?v=N` in index.html after CSS changes. Never put a query string on JS (see the app.js trap).
 - online.js is a copy of `_online/online.js`. Another builder is fixing seat takeover there; re-copy it when the manager says.
 
 ## Decisions

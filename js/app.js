@@ -335,7 +335,9 @@ function renderBar(snap) {
     msg = t + (pub.roll && pub.phase !== "disprove" ? " " + dice(pub.roll) : "");
     if (me >= 0 && pub.out[me]) msg += ` <span class="sub">(you're out — still showing cards)</span>`;
   }
-  bar.innerHTML = `<div class="msg">${msg}</div>${acts ? `<div class="acts">${acts}</div>` : ""}${hand}`;
+  bar.classList.toggle("mine", !!ph && !pub.over);
+  // the buttons row is always there (empty on others' turns) so the board never jumps between turns
+  bar.innerHTML = `<div class="msg">${msg}</div><div class="acts">${acts}</div>${hand}`;
   const on = (id, f) => { const b = $("#" + id, bar); if (b) b.onclick = f; };
   on("bRoll", () => act({ type: "roll" }));
   on("bPass", () => act({ type: "passage" }));

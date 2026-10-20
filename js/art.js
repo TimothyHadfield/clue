@@ -71,13 +71,24 @@ export function cardSvg(ed, c) {
   } else {
     art = `<circle cx="50" cy="58" r="30" fill="#7fa35a" opacity=".16"/><g transform="translate(26 34) scale(2)" fill="none" stroke="#e6efd9" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">${ROOM_ICON[c - 12]}</g>`;
   }
-  const fs = name.length > 13 ? 10.5 : name.length > 10 ? 12 : 13.5;
+  // long names go on two lines so the letters stay big enough to read on a small hand card
+  let lines = [name];
+  if (name.length > 10 && name.includes(" ")) {
+    const sp = [...name].map((ch, i) => (ch === " " ? i : -1)).filter((i) => i > 0);
+    const cut = sp.reduce((a, b) => (Math.abs(b - name.length / 2) < Math.abs(a - name.length / 2) ? b : a));
+    lines = [name.slice(0, cut), name.slice(cut + 1)];
+  }
+  const longest = Math.max(...lines.map((l) => l.length));
+  const fs = Math.min(16, 84 / (longest * 0.6)).toFixed(1);
+  const text = lines.length === 1
+    ? `<text x="50" y="119" text-anchor="middle" font-size="${fs}" font-weight="800" fill="#f1f2f6">${name}</text>`
+    : `<text x="50" y="${117 - fs * 0.55}" text-anchor="middle" font-size="${fs}" font-weight="800" fill="#f1f2f6"><tspan x="50">${lines[0]}</tspan><tspan x="50" dy="${(fs * 1.08).toFixed(1)}">${lines[1]}</tspan></text>`;
   return `<svg viewBox="0 0 100 140" xmlns="http://www.w3.org/2000/svg">
     <rect x="1" y="1" width="98" height="138" rx="9" fill="${CAT_TINT[cat]}" stroke="${CAT_EDGE[cat]}" stroke-width="2"/>
     <rect x="6" y="6" width="88" height="128" rx="6" fill="none" stroke="${CAT_EDGE[cat]}" stroke-opacity=".45"/>
-    <text x="50" y="21" text-anchor="middle" font-size="9" font-weight="700" letter-spacing="2" fill="${CAT_EDGE[cat]}">${CAT_WORD[cat]}</text>
-    ${art}
-    <text x="50" y="117" text-anchor="middle" font-size="${fs}" font-weight="800" fill="#f1f2f6">${name}</text>
+    <text x="50" y="22" text-anchor="middle" font-size="11" font-weight="800" letter-spacing="1.2" fill="${CAT_EDGE[cat]}">${CAT_WORD[cat]}</text>
+    <g transform="translate(50 54) scale(.9) translate(-50 -58)">${art}</g>
+    ${text}
   </svg>`;
 }
 export function cardBackSvg() {

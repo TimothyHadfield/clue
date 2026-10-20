@@ -120,10 +120,12 @@ export function placeXY(place, slotIndex) {
 }
 
 export function tokenSvg(sus) {
-  return `<g class="tok" data-s="${sus}">${pawnShape(SUSPECT_COLORS[sus], 0, 0.02, 0.92)}</g>`;
+  // soft floor shadow under each pawn so it stands off the cream hallway
+  return `<g class="tok" data-s="${sus}"><ellipse cx="0" cy=".4" rx=".34" ry=".09" fill="#000" opacity=".35"/>${pawnShape(SUSPECT_COLORS[sus], 0, 0.0, 1.0)}</g>`;
 }
 export function weaponPieceSvg(w) {
-  return `<g class="wep" data-w="${w}"><circle r=".42" fill="#0f1117" opacity=".75"/><g transform="translate(-.33 -.33) scale(.0275)" fill="none" stroke="#e8eaf0" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${WEAPON_ICON[w]}</g></g>`;
+  // a cream token with a dark drawing, so it reads on every room floor
+  return `<g class="wep" data-w="${w}"><circle r=".45" cy=".04" fill="#000" opacity=".35"/><circle r=".44" fill="#efe3c4" stroke="#1a1e2b" stroke-width=".05"/><g transform="translate(-.33 -.33) scale(.0275)" fill="none" stroke="#1d2230" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round">${WEAPON_ICON[w]}</g></g>`;
 }
 
 /** Shortest hallway path between two places, for walking a token square by square. */
