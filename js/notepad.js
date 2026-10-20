@@ -19,7 +19,14 @@ export function initNotepad(el) {
   T = Object.assign(blank(), store.get("table", {}));
   render();
 }
+export function refreshNotepad() { if (root && T) render(); }
 const save = () => store.set("table", T);
+/** First few letters of a name, counting emoji as one letter, with "…" when cut. */
+function clip(str, k) {
+  let g;
+  try { g = [...new Intl.Segmenter(undefined, { granularity: "grapheme" }).segment(str)].map((x) => x.segment); } catch (e) { g = Array.from(str); }
+  return g.length > k ? g.slice(0, k - 1).join("") + "…" : str;
+}
 const ed = () => settings.edition;
 const sname = (c) => shortName(ed(), c);
 const n = () => T.names.length;
@@ -105,6 +112,7 @@ function solveNow() {
   askSolver({ n: n(), sizes: sizes(), facts, rank: rankRoom >= 0 ? { me: T.me, room: rankRoom, samples: 600, seed: T.records.length + 1 } : null }).then((r) => {
     if (resultKey !== key || !root.isConnected) return;
     if (!r.ok) {
+      result = null; ranked = null; drawRooms(); drawRank();
       $("#tnotes", root).innerHTML = `<div style="padding:12px">These notes contradict each other — something was entered wrong. Tap <b>Undo</b> to remove the last entry.</div>`;
       $("#tenv", root).innerHTML = "";
       return;
@@ -115,7 +123,7 @@ function solveNow() {
 }
 function drawGrid() {
   const N = n();
-  const head = (i) => ((T.names[i] || "").trim() ? nm(i).slice(0, 5) : i === T.me ? "You" : "P" + (i + 1));
+  const head = (i) => ((T.names[i] || "").trim() ? clip(nm(i).trim(), 5) : i === T.me ? "You" : "P" + (i + 1));
   const cols = T.names.map((_, i) => `<th>${esc(head(i))}</th>`).join("");
   let rows = "";
   for (const [label, a, b] of [["Suspects", 0, 6], ["Weapons", 6, 12], ["Rooms", 12, 21]]) {
@@ -123,13 +131,13 @@ function drawGrid() {
     for (let c = a; c < b; c++) {
       const pe = result.prob[c][N];
       rows += `<tr class="${pe > 0.9995 ? "solved" : ""} ${T.hand.includes(c) ? "mine" : ""}"><td class="nm">${esc(cardName(ed(), c))}</td>` +
-        T.names.map((_, p) => { const x = result.prob[c][p]; return x > 0.9995 ? `<td><span class="y">✓</span></td>` : x < 0.0005 ? `<td><span class="x">✗</span></td>` : `<td style="color:#c9cede">${pct(x)}</td>`; }).join("") +
-        `<td class="env" style="color:${pe === 0 ? "#5d6478" : heat(pe)}">${pe === 0 ? "✗" : pct(pe)}</td></tr>`;
+        T.names.map((_, p) => { const x = result.prob[c][p]; return x > 0.9995 ? `<td><span class="y">✓</span></td>` : x < 0.0005 ? `<td><span class="x">✗</span></td>` : `<td style="color:#c9cede">${settings.odds ? pct(x) : ""}</td>`; }).join("") +
+        `<td class="env" style="color:${pe === 0 ? "#5d6478" : heat(pe)}">${pe === 0 ? "✗" : pe > 0.9995 ? "✓" : settings.odds ? pct(pe) : ""}</td></tr>`;
     }
   }
   $("#tnotes", root).innerHTML = `<table><thead><tr><th style="text-align:left">Card</th>${cols}<th>File</th></tr></thead><tbody>${rows}</tbody></table>`;
   const top = result.env[0];
-  $("#tenv", root).innerHTML = `<div class="row between"><span class="label">Most likely answer</span><b style="color:${heat(top.p)}">${pct(top.p)}</b></div><div style="font-weight:700;font-size:15px">${top.cards.map((c) => esc(cardName(ed(), c))).join(" · ")}</div><div class="muted" style="font-size:12px">${result.envCount} possible answers · ${result.bits.toFixed(1)} bits left${result.exact ? "" : " (estimated)"}</div>`;
+  $("#tenv", root).innerHTML = `<div class="row between"><span class="label">Most likely answer</span>${settings.odds ? `<b style="color:${heat(top.p)}">${pct(top.p)}</b>` : ""}</div><div style="font-weight:700;font-size:15px">${top.cards.map((c) => esc(cardName(ed(), c))).join(" · ")}</div><div class="muted" style="font-size:12px">${result.envCount} possible answers · ${result.bits.toFixed(1)} bits left${result.exact ? "" : " (estimated)"}</div>`;
 }
 function drawRank() {
   const el = $("#trank", root);
@@ -165,6 +173,9 @@ function suggestionSheet() {
   $("#sSave", el).onclick = () => {
     const passes = [];
     for (let k = 1; k < n(); k++) { const p = (f.by + k) % n(); if (p === f.shower) break; passes.push(p); }
+    const held = f.cards.filter((c) => T.hand.includes(c));
+    if (passes.includes(T.me) && held.length) { toast(`You hold ${sname(held[0])}, so you would have shown it`); return; }
+    if (f.shower === T.me && !held.length) { toast("You hold none of those cards"); return; }
     const rec = { t: "suggest", by: f.by, cards: f.cards.slice(), passes, shower: f.shower };
     if (f.shown != null) rec.shown = f.shown;
     T.records.push(rec); save(); closeSheet(); mainView();

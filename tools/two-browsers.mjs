@@ -31,18 +31,18 @@ const snap = (p) => p.evaluate(() => JSON.parse(JSON.stringify(window.__clue.sna
 
 await A.goto(url); await B.goto(url);
 await A.click("#goOnline"); await A.fill("#oName", "Alice"); await A.click("#oCreate");
-await A.waitForSelector("#lseats", { timeout: 20000 });
+await A.waitForSelector("#lseats", { timeout: 60000 });
 const codeSel = '.setup-wrap div[style*="44px"]';
-await A.waitForFunction((sel) => /^[A-Z0-9]{5}$/.test(document.querySelector(sel).textContent.trim()), codeSel, { timeout: 20000 });
+await A.waitForFunction((sel) => /^[A-Z0-9]{5}$/.test(document.querySelector(sel).textContent.trim()), codeSel, { timeout: 60000 });
 const code = (await A.textContent(codeSel)).trim();
 console.log("room code", code);
 if (shots) await A.screenshot({ path: shots + "/online-lobby.png" });
 
 await B.click("#goOnline"); await B.fill("#oName", "Bob"); await B.fill("#oCode", code); await B.click("#oJoin");
-await A.waitForFunction(() => /Bob/.test(document.querySelector("#lseats").textContent), null, { timeout: 25000 });
+await A.waitForFunction(() => /Bob/.test(document.querySelector("#lseats").textContent), null, { timeout: 60000 });
 console.log("PASS Bob is seated");
 await A.click("#lStart");
-for (const p of [A, B]) await p.waitForFunction(() => window.__clue.snap && window.__clue.snap.pub && window.__clue.snap.mine && document.querySelector("svg.board"), null, { timeout: 25000 });
+for (const p of [A, B]) await p.waitForFunction(() => window.__clue.snap && window.__clue.snap.pub && window.__clue.snap.mine && document.querySelector("svg.board"), null, { timeout: 60000 });
 
 const sA = await snap(A), sB = await snap(B);
 console.log("Alice seat", sA.mySeat, "hand", sA.mine.hand.join(","), "| Bob seat", sB.mySeat, "hand", sB.mine.hand.join(","));

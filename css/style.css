@@ -241,3 +241,10 @@ select { -webkit-appearance: none; appearance: none; padding-right: 30px; color-
 .chart svg { width: 100%; height: auto; display: block; }
 @media (min-width: 900px) { #notesBtn, #closeNotes { display: none; } }
 @media (max-width: 520px) { .setrow { flex-wrap: wrap; } .setrow .seg { flex: 1 1 100%; } }
+.pl.away { cursor: pointer; border-style: dashed; }
+@media (max-width: 520px) {
+  /* sheet chips: drop the small weapon/room drawings so whole names fit */
+  #overlay .chip > svg, #troom .chip > svg { display: none; }
+  #overlay .chip, #troom .chip { gap: 3px; padding: 4px 5px; }
+  .pl { gap: 3px; padding: 3px 4px; }
+}

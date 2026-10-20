@@ -7,8 +7,8 @@ import { boardSvg, roomHitPaths, placeXY, tokenSvg, weaponPieceSvg, walkPath, RO
 import { reach, PASSAGE, idx, rc } from "./board.js";
 import { factsFor, handSizes } from "./knowledge.js";
 import { recordsFor, LEVELS } from "./ai.js";
-import { initNotepad } from "./notepad.js";
-import { $, $$, esc, store, settings, saveSettings, toast, sheet, closeSheet, pct, heat, help, askSolver } from "./ui.js";
+import { initNotepad, refreshNotepad } from "./notepad.js";
+import { $, $$, esc, store, settings, saveSettings, toast, sheet, closeSheet, sheetOpen, pushLayer, popLayer, takeOwnBack, pct, heat, help, askSolver } from "./ui.js";
 import { initLearn } from "./learn.js";
 
 const E = () => EDITIONS[settings.edition] || EDITIONS.classic;
@@ -23,9 +23,17 @@ function showTab(t, push = true) {
   $$("main .tab").forEach((s) => s.classList.toggle("active", s.id === "tab-" + t));
   if (push && location.hash !== "#" + t) history.pushState(null, "", "#" + t);
   if (t === "learn") initLearn($("#tab-learn"));
+  if (t === "table") refreshNotepad();
+  if (t === "settings") settingsView();
 }
 $$("nav.tabs button").forEach((b) => (b.onclick = () => showTab(b.dataset.tab)));
-window.addEventListener("popstate", () => { closeSheet(); showTab(location.hash.slice(1), false); });
+window.addEventListener("popstate", () => {
+  const o = $("#overlay");
+  if (takeOwnBack()) { if (sheetOpen() || (gameEl && gameEl.classList.contains("notesopen"))) pushLayer("again"); return; }
+  if (sheetOpen()) { if (o.dataset.lock === "1") pushLayer("sheet"); else closeSheet(true); return; }
+  if (gameEl && gameEl.classList.contains("notesopen")) { gameEl.classList.remove("notesopen"); return; }
+  showTab(location.hash.slice(1), false);
+});
 
 // ------------------------------------------------------------------ local room (same snapshot shape as online.js, plus save/resume)
 function localRoom({ seats, options, state }) {
@@ -78,9 +86,10 @@ let room = null, online = null, snapNow = null, prevPub = null, gameEl = null;
 let notes = null, notesKey = "", ranked = null, rankKey = "";
 let myQuestions = []; // {got, best} bits for each of your suggestions
 let animating = Promise.resolve();
+let view = "setup";   // setup | onlineForm | lobby | game
 
 function setupView() {
-  room = null; snapNow = null; prevPub = null; gameEl = null;
+  room = null; snapNow = null; prevPub = null; gameEl = null; view = "setup";
   const n = settings.players;
   const used = suspectsFor(n, settings.me);
   const rec = store.get("record", { w: 0, l: 0 });
@@ -129,7 +138,13 @@ function startLocal(resume) {
 
 function onSnap(snap) {
   if (snap.status === "lobby" || snap.status === "joining") { lobbyView(snap); return; }
-  if (!snap.pub) { if (snap.status === "closed" || snap.status === "left" || snap.status === "none") { setupView(); } return; }
+  if (!snap.pub) {
+    if (view === "onlineForm" || view === "setup") return;   // a failed join keeps the form and what you typed
+    if (snap.status === "closed") toast("The room was closed", 3000);
+    if (snap.status === "closed" || snap.status === "left" || snap.status === "none") setupView();
+    return;
+  }
+  view = "game";
   const first = !gameEl || snapNow && snapNow.pub && snapNow.pub.n !== snap.pub.n;
   const prev = snapNow;
   snapNow = snap;
@@ -139,10 +154,10 @@ function onSnap(snap) {
 
 function buildGame(snap) {
   const pub = snap.pub;
-  settings.edition = pub.opts.edition || settings.edition;
+  view = "game";
   play.innerHTML = `<div class="game" id="game">
     <div class="players" id="players"></div>
-    <div class="boardwrap" id="bw">${boardSvg(pub.opts.edition)}</div>
+    <div class="boardwrap" id="bw">${boardSvg(settings.edition)}</div>
     <div class="side" id="side">
       <div class="row between"><div class="label">Your notes ${help("How the notes work", "Every way the 21 cards could have been dealt that fits what you have seen is counted. A card's number is the share of those deals where it sits in that hand or in the case file. ✓ and ✗ mean certain.")}</div><button class="btn small ghost" id="closeNotes">Close</button></div>
       <div class="envline" id="envline"></div>
@@ -156,7 +171,7 @@ function buildGame(snap) {
   $(".hits", svg).innerHTML = roomHitPaths();
   $(".toks", svg).innerHTML = [0, 1, 2, 3, 4, 5].map(tokenSvg).join("");
   $(".weps", svg).innerHTML = [0, 1, 2, 3, 4, 5].map(weaponPieceSvg).join("");
-  $("#closeNotes").onclick = () => gameEl.classList.remove("notesopen");
+  $("#closeNotes").onclick = () => { gameEl.classList.remove("notesopen"); popLayer(); };
   svg.addEventListener("click", onBoardClick);
   placePieces(pub, null, true);
 }
@@ -222,12 +237,21 @@ function seatName(pub, i, snap) {
 }
 function renderPlayers(snap) {
   const pub = snap.pub;
+  // narrow screens with many players: short labels that stay different (Pe / Pl)
+  const room4 = (Math.min(window.innerWidth, 900) - 90) / pub.n;
+  const keep = room4 < 62 ? 2 : room4 < 80 ? 3 : 99;
   $("#players").innerHTML = pub.chars.map((c, i) => {
     const cls = ["pl", i === pub.turn && !pub.over ? "turn" : "", pub.sugg && pub.sugg.asking === i ? "asking" : "", pub.out[i] ? "out" : ""].join(" ");
-    const away = snap.mode === "online" && snap.seats[i] && snap.seats[i].kind === "human" && !snap.seats[i].online ? " ·off" : "";
-    return `<div class="${cls}" data-seat="${i}"><i style="background:${SUSPECT_COLORS[c]}"></i><span class="nm">${esc(seatName(pub, i, snap))}${away}</span><span class="ct" title="cards">${pub.sizes[i]}</span></div>`;
+    const sn = snap.seats && snap.seats[i];
+    const away = snap.mode === "online" && i !== snap.mySeat && sn && sn.kind === "human" && !sn.online;
+    const full = seatName(pub, i, snap);
+    const label = i === snap.mySeat ? (keep < 3 ? "Me" : "You") : Array.from(full).slice(0, keep).join("");
+    const ctl = away && snap.isHost && !pub.over ? ` data-away="1"` : "";
+    return `<div class="${cls}${away ? " away" : ""}" data-seat="${i}" title="${esc(full)} · ${pub.sizes[i]} cards"${ctl}><i style="background:${SUSPECT_COLORS[c]}"></i><span class="nm">${esc(label)}${away ? " ·off" : ""}</span>${keep > 2 ? `<span class="ct" title="cards">${pub.sizes[i]}</span>` : ""}</div>`;
   }).join("") + `<button class="btn small" id="notesBtn" style="flex:none;min-height:30px">Notes</button>`;
-  $("#notesBtn").onclick = () => gameEl.classList.add("notesopen");
+  $("#notesBtn").onclick = () => { gameEl.classList.add("notesopen"); pushLayer("notes"); };
+  $$("#players [data-away]").forEach((el) => (el.onclick = () => handOver(+el.dataset.seat)));
+  if (snap.mode === "online") watchAway(snap);
 }
 function bubble(seat, text) {
   const el = $(`.pl[data-seat="${seat}"]`, gameEl);
@@ -334,11 +358,15 @@ function reachOdds(pub, place) {
   let p = 0;
   for (let t = 1; t < dist.length; t++) if (dist[t]) { const m = reach(place, t, blocked); if (m.rooms.some((x) => x.room !== pub.startRoom)) p += dist[t]; }
   const el = $("#reachOdds");
-  if (el) el.innerHTML = `Room this roll: <b style="color:${heat(p)}">${pct(p)}</b>`;
+  if (el) el.innerHTML = !settings.odds ? "" : `Room this roll: <b style="color:${heat(p)}">${pct(p)}</b>`;
 }
 
+let lastAct = { k: "", t: 0 };
 async function act(a) {
   if (!snapNow) return;
+  const k = JSON.stringify(a), t = Date.now();
+  if (k === lastAct.k && t - lastAct.t < 600) return;   // a double tap sends once
+  lastAct = { k, t };
   closeSheet();
   if (snapNow.mode === "online") { const r = await online.act(a); if (!r.ok) toast(r.message); }
   else room.act(a);
@@ -412,18 +440,18 @@ function drawNotes(snap) {
       const mine = snap.mine.hand.includes(c);
       rows += `<tr class="${pe > 0.9995 ? "solved" : ""} ${mine ? "mine" : ""}"><td class="nm">${esc(cname(c))}</td>` +
         pub.chars.map((_, p) => cellMark(notes.prob[c][p])).join("") +
-        `<td class="env" style="color:${pe === 0 ? "#5d6478" : heat(pe)}">${pe === 0 ? "✗" : pct(pe)}</td></tr>`;
+        `<td class="env" style="color:${pe === 0 ? "#5d6478" : heat(pe)}">${pe === 0 ? "✗" : pe > 0.9995 ? "✓" : settings.odds ? pct(pe) : ""}</td></tr>`;
     }
   }
   el.innerHTML = `<table><thead><tr><th style="text-align:left">Card</th>${cols}<th>File</th></tr></thead><tbody>${rows}</tbody></table>`;
   const top = notes.env[0];
   const envl = $("#envline");
-  if (envl && top) envl.innerHTML = `<div class="row between" style="font-size:13px"><span>Best guess: <b>${top.cards.map(sname).join(" · ")}</b></span><b style="color:${heat(top.p)}">${pct(top.p)}</b></div><div class="muted" style="font-size:12px">${notes.envCount} answers still possible${notes.exact ? "" : " (estimated)"}</div>`;
+  if (envl && top) envl.innerHTML = `<div class="row between" style="font-size:13px"><span>Best guess: <b>${top.cards.map(sname).join(" · ")}</b></span>${settings.odds ? `<b style="color:${heat(top.p)}">${pct(top.p)}</b>` : ""}</div><div class="muted" style="font-size:12px">${notes.envCount} answers still possible${notes.exact ? "" : " (estimated)"}</div>`;
 }
 function cellMark(p) {
   if (p > 0.9995) return `<td><span class="y">✓</span></td>`;
   if (p < 0.0005) return `<td><span class="x">✗</span></td>`;
-  return `<td style="color:#c9cede">${pct(p)}</td>`;
+  return `<td style="color:#c9cede">${settings.odds ? pct(p) : ""}</td>`;
 }
 
 // ------------------------------------------------------------------ sheets: suggest / accuse / show
@@ -455,7 +483,9 @@ function suggestSheet(snap) {
   };
   draw();
   $("#sBest", el).onclick = () => { if (best) { pickS = best.cards[0]; pickW = best.cards[1]; draw(); } };
+  let sent = false;
   $("#sGo", el).onclick = () => {
+    if (sent) return; sent = true;
     const b = bitsOf(pickS, pickW);
     if (best && b != null) { myQuestions.push({ got: b, best: best.bits }); store.set("questions", myQuestions); }
     act({ type: "suggest", suspect: pickS, weapon: pickW });
@@ -475,8 +505,10 @@ function accuseSheet(snap) {
     $("#aGo", el).disabled = !ready;
     if (ready && notes) {
       const m = notes.env.find((x) => x.cards.every((c, i) => c === pick[i]));
-      const p = m ? m.p : 0;
-      $("#ainfo", el).innerHTML = `Chance this is right: <b style="color:${heat(p)}">${pct(p)}</b>${notes.env.length >= 12 && !m ? " or less" : ""}`;
+      const ruledOut = pick.some((c) => notes.prob[c][snapNow.pub.n] === 0);
+      const low = notes.env.length ? notes.env[notes.env.length - 1].p : 0;
+      const txt = m ? `<b style="color:${heat(m.p)}">${pct(m.p)}</b>` : ruledOut || notes.envCount <= notes.env.length ? `<b style="color:${heat(0)}">0%</b> — your notes rule it out` : `<b style="color:${heat(low)}">under ${pct(low)}</b>`;
+      $("#ainfo", el).innerHTML = settings.odds || ruledOut ? `Chance this is right: ${txt}` : "";
     } else $("#ainfo", el).innerHTML = "";
   };
   draw();
@@ -520,6 +552,51 @@ function gameOver(snap) {
 }
 
 // ------------------------------------------------------------------ ONLINE
+// A player who closes their tab mid-game: the host's page hands that seat to a computer once the
+// seat has been offline for a while and the game is waiting on it. The host can also do it by tapping the seat.
+const AWAY_MS = 20000;
+const awaySince = new Map();
+function watchAway(snap) {
+  if (!snap.isHost || !snap.pub || snap.pub.over) { awaySince.clear(); return; }
+  const now = Date.now();
+  snap.seats.forEach((sn, i) => {
+    const away = i !== snap.mySeat && sn.kind === "human" && !sn.online;
+    if (!away) { awaySince.delete(i); return; }
+    if (!awaySince.has(i)) awaySince.set(i, now);
+  });
+  clearTimeout(watchAway.t);
+  if (awaySince.size) watchAway.t = setTimeout(checkAway, 2000);
+}
+function checkAway() {
+  const snap = snapNow;
+  if (!snap || snap.mode !== "online" || !snap.isHost || !snap.pub || snap.pub.over) return;
+  for (const [i, since] of awaySince) {
+    const sn = snap.seats[i];
+    if (!sn || sn.kind !== "human" || sn.online) { awaySince.delete(i); continue; }
+    if (snap.toAct.includes(i) && Date.now() - since > AWAY_MS) {
+      awaySince.delete(i);
+      online.setSeat(i, "computer").then((r) => { if (r && r.ok) toast(`${sn.name || "A player"} left — a computer took their seat`, 3000); });
+    }
+  }
+  if (awaySince.size) watchAway.t = setTimeout(checkAway, 2000);
+}
+function handOver(i) {
+  const snap = snapNow;
+  if (!snap || !snap.isHost) return;
+  const sn = snap.seats[i];
+  sheet(`<h3>${esc(sn.name || "This player")} is offline</h3><p>Let a computer play their seat? Their cards stay the same.</p>
+    <div class="row" style="justify-content:flex-end"><button class="btn ghost" data-close>Wait</button><button class="btn primary" id="hoYes">Computer plays</button></div>`,
+    (el) => { $("[data-close]", el).onclick = closeSheet; $("#hoYes", el).onclick = async () => { closeSheet(); const r = await online.setSeat(i, "computer"); if (!r.ok) toast(r.message); }; });
+}
+function quitGame() {
+  closeSheet(true);
+  try { history.replaceState(null, "", "#play"); } catch (e) {}
+  store.del("local");
+  if (room && room.close) room.close();
+  if (snapNow && snapNow.mode === "online" && online) online.leave();
+  setupView();
+  showTab("play", false);
+}
 function getOnline() {
   if (!online) {
     online = createOnline({ game, gameId: "clue", botDelayMs: 800 });
@@ -530,7 +607,7 @@ function getOnline() {
 }
 function onlineView() {
   if (room && room.close) room.close();
-  room = null; gameEl = null;
+  room = null; gameEl = null; view = "onlineForm";
   const name = store.get("name", "");
   play.innerHTML = `<div class="setup-wrap"><div class="hero">${logoSvg()}<p>Play with friends on their own phones.</p></div>
     <div class="panel stack">
@@ -547,7 +624,7 @@ function onlineView() {
     const seats = chars.map((c) => (c === settings.me ? "human" : "empty"));
     $("#oCreate").disabled = true;
     const r = await getOnline().createRoom({ name: nm, seats, options: gameOptions(chars) });
-    if (!r.ok) { toast(r.message); $("#oCreate").disabled = false; }
+    if (!r.ok) { toast(r.message); const b = $("#oCreate"); if (b) b.disabled = false; }
   };
   $("#oJoin").onclick = async () => {
     const nm = $("#oName").value.trim() || "Player"; store.set("name", nm);
@@ -555,11 +632,11 @@ function onlineView() {
     if (code.length !== 5) { toast("Codes are 5 letters"); return; }
     $("#oJoin").disabled = true;
     const r = await getOnline().joinRoom(code, nm);
-    if (!r.ok) { toast(r.message); $("#oJoin").disabled = false; }
+    if (!r.ok) { toast(r.message || "Couldn't join that room"); const b = $("#oJoin"); if (b) b.disabled = false; }
   };
 }
 function lobbyView(snap) {
-  gameEl = null;
+  gameEl = null; view = "lobby";
   const chars = (snap.options && snap.options.chars) || [];
   play.innerHTML = `<div class="setup-wrap"><div class="panel stack" style="text-align:center">
       <div class="label">Room code</div><div style="font-size:44px;font-weight:900;letter-spacing:.25em">${esc(snap.code || "…")}</div>
@@ -587,12 +664,17 @@ function settingsView() {
     <div class="setrow"><div class="lbl">Show odds<small>Percentages on cards and rooms</small></div><label class="switch"><input type="checkbox" id="sOdds" ${settings.odds ? "checked" : ""}><span></span></label></div>
     <div class="setrow"><div class="lbl">Speed<small>Computer turns and walking</small></div>${seg("speed", [[0.6, "Slow"], [1, "Normal"], [2, "Fast"]])}</div>
   </div>
+  ${snapNow && snapNow.pub && !snapNow.pub.over ? `<div class="panel"><div class="setrow"><div class="lbl">${snapNow.mode === "online" ? "Leave room" : "Quit game"}<small>${snapNow.mode === "online" ? "A computer takes your seat" : "Ends the game you're playing"}</small></div><button class="btn small danger" id="sQuit">${snapNow.mode === "online" ? "Leave" : "Quit"}</button></div></div>` : ""}
   <div class="panel"><div class="setrow"><div class="lbl">Reset record<small>Your win/loss count</small></div><button class="btn small" id="sReset">Reset</button></div></div></div>`;
   $$("[data-key]", el).forEach((g) => $$("button", g).forEach((b) => (b.onclick = () => {
     const k = g.dataset.key; const v = b.dataset.v;
     settings[k] = k === "edition" || k === "rules" ? v : +v; saveSettings(); settingsView();
+    if (k === "edition" && snapNow && snapNow.pub && gameEl) { buildGame(snapNow); renderGame(snapNow, null); }
   })));
-  $("#sOdds", el).onchange = (e) => { settings.odds = e.target.checked; saveSettings(); if (snapNow) { renderHighlights(snapNow); drawNotes(snapNow); } };
+  $("#sOdds", el).onchange = (e) => { settings.odds = e.target.checked; saveSettings(); if (snapNow) { if (snapNow.pub && gameEl) renderGame(snapNow, null); renderHighlights(snapNow); drawNotes(snapNow); } };
+  const q = $("#sQuit", el);
+  if (q) q.onclick = () => sheet(`<h3>${snapNow.mode === "online" ? "Leave this room?" : "Quit this game?"}</h3><div class="row" style="justify-content:flex-end"><button class="btn ghost" data-close>Cancel</button><button class="btn danger" id="qYes">${snapNow.mode === "online" ? "Leave" : "Quit"}</button></div>`,
+    (s) => { $("[data-close]", s).onclick = closeSheet; $("#qYes", s).onclick = quitGame; });
   $("#sReset", el).onclick = () => { store.set("record", { w: 0, l: 0 }); toast("Record reset"); };
 }
 

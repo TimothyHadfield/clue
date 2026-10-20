@@ -3,8 +3,8 @@
   "vs": [
     { "label": "Hard vs 3 Medium", "win": 0.3675, "note": "400 games. Fair share is 25%. Hard counts every possible deal and asks the most useful question." },
     { "label": "Hard vs 5 Medium", "win": 0.21, "note": "200 games, 6 players. Fair share is 17%." },
-    { "label": "Medium vs 3 Easy", "win": 1.0, "note": "200 games. Medium won all 200." },
-    { "label": "Hard vs 3 Easy", "win": 0.995, "note": "200 games." }
+    { "label": "Medium vs 3 Easy", "win": 0.745, "note": "200 games, measured 2026-10-20 after Easy learned the \"nobody could answer\" trick." },
+    { "label": "Hard vs 3 Easy", "win": 0.82, "note": "200 games, measured 2026-10-20." }
   ],
   "seat": [0.3175, 0.2425, 0.2275, 0.2125],
   "seatHow": "400 games, four Medium computers, Clue rules. Each bar is how often that seat won.",

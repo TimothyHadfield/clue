@@ -23,7 +23,8 @@ for (const R of ROOMS) {
   for (const [r, x] of [...rowsW].sort((a, b) => a[0] - b[0])) { const w = x.b - x.a + 1; if (!best || w > best.w) best = { r, w, cx: (x.a + x.b + 1) / 2 }; }
   R.lx = best.cx; R.ly = best.r; R.lw = best.w;
   // places to stand pieces: room squares below the name, nearest the middle first
-  const slots = R.cells.filter(([r]) => r >= R.ly + 2 || R.r1 - R.ly < 3).map(([r, c]) => ({ x: c + 0.5, y: r + 0.5 }));
+  // (the bottom-middle squares are kept clear for the room's odds label)
+  const slots = R.cells.filter(([r, c]) => (r >= R.ly + 2 || R.r1 - R.ly < 3) && !(r === R.r1 && Math.abs(c + 0.5 - R.cx) < 1.6)).map(([r, c]) => ({ x: c + 0.5, y: r + 0.5 }));
   const ty = R.ly + 2 + (R.r1 - R.ly - 1) / 2;
   slots.sort((a, b) => Math.hypot(a.x - R.cx, (a.y - ty) * 1.3) - Math.hypot(b.x - R.cx, (b.y - ty) * 1.3));
   R.slots = slots;

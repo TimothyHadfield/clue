@@ -40,10 +40,14 @@ export function beliefs(level, pub, mine, seat) {
   } else if (level === 0) {
     // only cards in hand or seen
     const known = new Set(mine.hand.concat((mine.seen || []).map((x) => x.card)));
+    // the one trick a beginner knows: if nobody could answer my question, the cards I don't hold are the answer
+    const sure = new Set();
+    for (const r of pub.log) if (r.t === "suggest" && r.by === seat && r.shower == null) for (const c of r.cards) if (!mine.hand.includes(c)) sure.add(c);
     const pEnv = new Array(21).fill(0);
     let answer = [];
     for (const cat of CAT_CARDS) {
-      const un = cat.filter((c) => !known.has(c));
+      const s = cat.find((c) => sure.has(c));
+      const un = s != null ? [s] : cat.filter((c) => !known.has(c));
       for (const c of un) pEnv[c] = 1 / un.length;
       answer.push(un.length === 1 ? un[0] : -1);
     }

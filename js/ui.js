@@ -16,15 +16,30 @@ export function toast(msg, ms = 2200) {
   const t = $("#toast"); t.textContent = msg; t.classList.add("on");
   clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove("on"), ms);
 }
+// Back button: an open sheet (or the phone's Notes panel) is one history step, so Back closes it
+// instead of changing tab or leaving the site.
+let ownBacks = 0;
+export function pushLayer(kind) { try { if (!(history.state && history.state.layer)) history.pushState({ layer: kind }, ""); } catch (e) {} }
+export function popLayer() { try { if (history.state && history.state.layer) { ownBacks++; history.back(); } } catch (e) {} }
+/** For the popstate handler: true if this pop was our own popLayer(). */
+export function takeOwnBack() { if (ownBacks > 0) { ownBacks--; return true; } return false; }
 export function sheet(html, onOpen) {
   const o = $("#overlay");
   o.innerHTML = `<div class="sheet">${html}</div>`;
   o.classList.add("on");
+  o.dataset.lock = "";
   o.onclick = (e) => { if (e.target === o && o.dataset.lock !== "1") closeSheet(); };
+  pushLayer("sheet");
   if (onOpen) onOpen(o.firstElementChild);
   return o.firstElementChild;
 }
-export function closeSheet() { const o = $("#overlay"); o.classList.remove("on"); o.innerHTML = ""; o.dataset.lock = ""; }
+export function sheetOpen() { return $("#overlay").classList.contains("on"); }
+export function closeSheet(fromBack) {
+  const o = $("#overlay");
+  const was = o.classList.contains("on");
+  o.classList.remove("on"); o.innerHTML = ""; o.dataset.lock = "";
+  if (was && fromBack !== true) popLayer();
+}
 export const pct = (p) => (p >= 0.9995 ? "100%" : p <= 0.0005 ? "0%" : p < 0.01 ? "<1%" : Math.round(p * 100) + "%");
 /** red → green for "how likely is this the answer" */
 export const heat = (p) => `hsl(${Math.round(8 + 120 * Math.min(1, p))} 70% 62%)`;
