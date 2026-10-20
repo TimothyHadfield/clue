@@ -4,7 +4,7 @@ import { eventsFor, perform, defineSounds, DEAL_AT, DEAL_GAP } from "./sfx.js";
 import { game, movesFor, canPassage, canSuggestHere } from "./game.js";
 import { createOnline } from "./online.js";
 import { EDITIONS, RULESETS, SUSPECT_COLORS, cardName, shortName } from "./cards.js";
-import { cardSvg, weaponSvg, roomSvg, pawnSvg, dieHtml, logoSvg } from "./art.js";
+import { cardSvg, cardBackHtml, weaponSvg, roomSvg, pawnSvg, dieHtml, logoSvg } from "./art.js";
 import { boardSvg, roomHitPaths, placeXY, tokenSvg, weaponPieceSvg, walkPath, ROOMS } from "./boardview.js";
 import { reach, PASSAGE, idx, rc } from "./board.js";
 import { factsFor, handSizes } from "./knowledge.js";
@@ -175,20 +175,29 @@ function fxCtx(snap) {
       const r = from.getBoundingClientRect();
       const g = document.createElement("div");
       g.className = "fx-cardback";
-      g.style.left = r.left + r.width / 2 - 9 + "px"; g.style.top = r.top + r.height / 2 - 13 + "px";
+      g.style.left = r.left + r.width / 2 - 11 + "px"; g.style.top = r.top + r.height / 2 - 17 + "px";
       document.body.appendChild(g);
       FX.flyTo(g, to, { clone: false, scale: 1, duration: 520 }).then(() => g.remove());
     },
-    // the dealt cards fly from the middle of the board into your hand
+    // the dealt cards come face down off the case-file envelope, land in your fan and turn face up
     deal: () => {
       if (!FX.settings.animations || !gameEl) return;
-      const b = $("#bw", gameEl).getBoundingClientRect(), cx = b.left + b.width / 2, cy = b.top + b.height / 2;
+      const src = $(".envelope", gameEl) || $("#bw", gameEl);
+      const b = src.getBoundingClientRect(), ex = b.left + b.width / 2, ey = b.top + b.height / 2;
+      const hr = $("#hand", gameEl).getBoundingClientRect();
       const sp = FX.settings.animSpeed === "fast" ? 0.55 : 1;
+      const T = (x, y, r, s, ry) => `perspective(800px) translate(${x}px, ${y}px) rotate(${r}deg) scale(${s}) rotateY(${ry}deg)`;
       $$("#hand .cardf", gameEl).forEach((c, i) => {
-        const r = c.getBoundingClientRect();
+        const v = (k) => parseFloat(c.style.getPropertyValue(k)) || 0;
+        const x = v("--x"), y = v("--y"), r = v("--r"), w = c.offsetWidth, h = c.offsetHeight;
+        const sx = ex - (hr.left + w / 2), sy = ey - (hr.bottom - h / 2);
+        const dur = 460 * sp;
         try {
-          c.animate([{ transform: `translate(${cx - r.left - r.width / 2}px, ${cy - r.top - r.height / 2}px) scale(.45) rotate(-12deg)`, opacity: 0 }, { transform: "none", opacity: 1 }],
-            { duration: 300 * sp, delay: Math.max(0, DEAL_AT + i * DEAL_GAP - 300 * sp), easing: "cubic-bezier(.3,.7,.3,1)", fill: "backwards" });
+          const timing = { duration: dur, delay: Math.max(0, DEAL_AT + i * DEAL_GAP - dur * 0.62), easing: "cubic-bezier(.3,.7,.3,1)", fill: "backwards" };
+          c.animate([{ transform: T(sx, sy, -14, 0.4, 180) }, { transform: T(x, y, r, 1, 180), offset: 0.62 }, { transform: T(x, y, r, 1, 0) }], timing);
+          // the back covers the face until the card has turned past edge-on
+          const bk = c.querySelector(".clue-back");
+          if (bk) bk.animate([{ opacity: 1 }, { opacity: 1, offset: 0.8 }, { opacity: 0, offset: 0.81 }, { opacity: 0 }], timing);
         } catch (e) {}
       });
     },
@@ -212,7 +221,9 @@ function notesEffects(r, snap) {
 function buildGame(snap) {
   const pub = snap.pub;
   view = "game";
-  play.innerHTML = `<div class="game" id="game">
+  // the table, seen from your seat: the others across the table, the board in the middle,
+  // your own hand at the bottom edge, and your detective sheet beside you
+  play.innerHTML = `<div class="game tbl-surface tbl-wood-dark" id="game">
     <div class="players" id="players"></div>
     <div class="boardwrap" id="bw">${boardSvg(settings.edition)}</div>
     <div class="side" id="side">
@@ -221,9 +232,11 @@ function buildGame(snap) {
       <div class="notes" id="notes" style="flex:1"></div>
       <div class="log" id="log" style="max-height:24%"></div>
     </div>
-    <div class="bar" id="bar"></div>
+    <div class="bar" id="bar"><div class="msgrow"><div id="meSeat"></div><div class="msg"></div></div><div class="acts"></div></div>
+    <div class="myseat"><div class="hand" id="hand"></div></div>
   </div>`;
   gameEl = $("#game");
+  handKey = "";
   const svg = $("svg.board", gameEl);
   $(".hits", svg).innerHTML = roomHitPaths();
   $(".toks", svg).innerHTML = [0, 1, 2, 3, 4, 5].map(tokenSvg).join("");
@@ -296,18 +309,25 @@ function seatName(pub, i, snap) {
 }
 function renderPlayers(snap) {
   const pub = snap.pub;
+  const others = pub.chars.map((_, i) => i).filter((i) => i !== snap.mySeat);
   // narrow screens with many players: short labels that stay different (Pe / Pl)
-  const room4 = (Math.min(window.innerWidth, 900) - 90) / pub.n;
-  const keep = room4 < 62 ? 2 : room4 < 80 ? 3 : 99;
-  $("#players").innerHTML = pub.chars.map((c, i) => {
+  const room4 = (Math.min(window.innerWidth, 900) - 64) / Math.max(1, others.length);
+  const keep = room4 < 72 ? 2 : room4 < 96 ? 3 : 99;
+  // each seat: the cards they hold (backs, in a small fan) and a name plate in their colour
+  const seat = (i) => {
+    const c = pub.chars[i];
     const cls = ["pl", i === pub.turn && !pub.over ? "turn" : "", pub.sugg && pub.sugg.asking === i ? "asking" : "", pub.out[i] ? "out" : ""].join(" ");
     const sn = snap.seats && snap.seats[i];
     const away = snap.mode === "online" && i !== snap.mySeat && sn && sn.kind === "human" && !sn.online;
     const full = seatName(pub, i, snap);
-    const label = i === snap.mySeat ? (keep < 3 ? "Me" : "You") : Array.from(full).slice(0, keep).join("");
+    const label = i === snap.mySeat ? "You" : Array.from(full).slice(0, keep).join("");
     const ctl = away && snap.isHost && !pub.over ? ` data-away="1"` : "";
-    return `<div class="${cls}${away ? " away" : ""}" data-seat="${i}" title="${esc(full)} · ${pub.sizes[i]} cards"${ctl}><i style="background:${SUSPECT_COLORS[c]}"></i><span class="nm">${esc(label)}${away ? " ·off" : ""}</span>${keep > 2 ? `<span class="ct" title="cards">${pub.sizes[i]}</span>` : ""}</div>`;
-  }).join("") + `<button class="btn small" id="notesBtn" style="flex:none;min-height:30px">Notes</button>`;
+    const n = pub.sizes[i];
+    const backs = i === snap.mySeat ? "" : `<span class="backs" style="--n:${n}">${Array.from({ length: n }, (_, k) => `<i style="--k:${k - (n - 1) / 2}"></i>`).join("")}</span>`;
+    return `<div class="${cls}${away ? " away" : ""}" data-seat="${i}" title="${esc(full)} · ${n} cards"${ctl}>${backs}<span class="plate"><i style="background:${SUSPECT_COLORS[c]}"></i><span class="nm">${esc(label)}${away ? " ·off" : ""}</span></span></div>`;
+  };
+  $("#players").innerHTML = others.map(seat).join("") + `<button class="notepad-btn" id="notesBtn" aria-label="Notes"><span>Notes</span></button>`;
+  $("#meSeat").innerHTML = snap.mySeat >= 0 ? seat(snap.mySeat) : "";
   $("#notesBtn").onclick = () => { gameEl.classList.add("notesopen"); pushLayer("notes"); };
   $$("#players [data-away]").forEach((el) => (el.onclick = () => handOver(+el.dataset.seat)));
   if (snap.mode === "online") watchAway(snap);
@@ -345,7 +365,7 @@ function announce(snap, prev) {
   }
 }
 function revealCard(who, c) {
-  sheet(`<h3>${esc(who)} showed you</h3><div class="row" style="justify-content:center;margin:8px 0"><div class="cardf lg deal-in">${cardSvg(settings.edition, c)}</div></div><div class="row" style="justify-content:flex-end"><button class="btn primary" data-close>Got it</button></div>`,
+  sheet(`<h3>${esc(who)} showed you</h3><div class="row" style="justify-content:center;margin:8px 0"><div class="cardf lg turnup">${cardSvg(settings.edition, c)}${cardBackHtml()}</div></div><div class="row" style="justify-content:flex-end"><button class="btn primary" data-close>Got it</button></div>`,
     (el) => { $("[data-close]", el).onclick = closeSheet; });
 }
 
@@ -367,7 +387,7 @@ function renderBar(snap) {
   const ph = myTurnPhase(snap);
   const place = me >= 0 ? pub.pos[pub.chars[me]] : null;
   let msg = "", acts = "";
-  const hand = me >= 0 && snap.mine ? `<div class="hand" id="hand">${snap.mine.hand.map((c) => `<div class="cardf" data-c="${c}">${cardSvg(settings.edition, c)}</div>`).join("")}</div>` : "";
+  renderHand(snap);
   if (pub.over) {
     msg = pub.winner >= 0 ? `${esc(seatName(pub, pub.winner, snap))} solved it!` : "Nobody solved it.";
     acts = `<button class="btn primary" id="bNew">New game</button><button class="btn" id="bSum">Answer</button>`;
@@ -377,7 +397,7 @@ function renderBar(snap) {
   } else if (ph === "start") {
     const where = place.room != null ? ` · in the ${esc(E().rooms[place.room])}` : "";
     msg = `Your turn${where}`;
-    acts = `<button class="btn primary" id="bRoll">Roll</button>`;
+    acts = `<button class="btn primary" id="bRoll"><span class="rolldie">${dieHtml(5)}</span>Roll</button>`;
     if (canPassage(pub)) acts += `<button class="btn" id="bPass">Passage → ${esc(E().rooms[PASSAGE[place.room]])}</button>`;
     if (canSuggestHere(pub)) acts += `<button class="btn warm" id="bSug">Suggest here</button>`;
     acts += `<button class="btn" id="bAcc">Accuse</button>`;
@@ -398,7 +418,8 @@ function renderBar(snap) {
   }
   bar.classList.toggle("mine", !!ph && !pub.over);
   // the buttons row is always there (empty on others' turns) so the board never jumps between turns
-  bar.innerHTML = `<div class="msg">${msg}</div><div class="acts">${acts}</div>${hand}`;
+  $(".msg", bar).innerHTML = msg;
+  $(".acts", bar).innerHTML = acts;
   const on = (id, f) => { const b = $("#" + id, bar); if (b) b.onclick = f; };
   on("bRoll", () => act({ type: "roll" }));
   on("bPass", () => act({ type: "passage" }));
@@ -410,6 +431,19 @@ function renderBar(snap) {
   on("bSum", () => gameOver(snap));
   if (ph === "disprove" && !$("#overlay").classList.contains("on")) showSheet(snap);
   if (ph === "start" && settings.odds) reachOdds(pub, place);
+}
+// your hand: held as a fan of real cards along the bottom edge (rebuilt only when the cards change)
+let handKey = "", handApi = null;
+function renderHand(snap) {
+  const el = $("#hand", gameEl);
+  if (!el) return;
+  const cards = snap.mySeat >= 0 && snap.mine ? snap.mine.hand : [];
+  const key = settings.edition + "|" + cards.join();
+  if (key === handKey) return;
+  handKey = key;
+  if (handApi && handApi.disconnect) handApi.disconnect();
+  handApi = window.TABLE.fan(el, cards.map((c) => `<div class="cardf tbl-card" data-c="${c}">${cardSvg(settings.edition, c)}${cardBackHtml()}</div>`),
+    { pick: false, lift: 0, spread: 0.93, arc: 0.5, maxRot: 7 });
 }
 function dice(roll) { return roll ? `<span class="dice">${roll.dice.map(dieHtml).join("")}</span>` : ""; }
 
@@ -609,7 +643,7 @@ function gameOver(snap) {
   const q = myQuestions.length ? myQuestions.reduce((a, x) => a + (x.best > 0 ? x.got / x.best : 1), 0) / myQuestions.length : null;
   const hands = pub.reveal.hands.map((h, i) => `<div class="row" style="font-size:13px;gap:6px"><i style="width:10px;height:10px;border-radius:50%;background:${SUSPECT_COLORS[pub.chars[i]]};display:inline-block"></i><b style="min-width:58px">${esc(seatName(pub, i, snap))}</b><span class="muted">${h.map(sname).join(", ")}</span></div>`).join("");
   sheet(`<h3>${pub.winner >= 0 ? (won ? "You solved it!" : esc(seatName(pub, pub.winner, snap)) + " solved it") : "Nobody solved it"}</h3>
-    <div class="row" style="justify-content:center;gap:8px;margin:6px 0 10px">${pub.reveal.env.map((c) => `<div class="cardf lg deal-in">${cardSvg(settings.edition, c)}</div>`).join("")}</div>
+    <div class="row" style="justify-content:center;gap:8px;margin:6px 0 10px">${pub.reveal.env.map((c, k) => `<div class="cardf lg turnup" style="animation-delay:${0.15 + k * 0.35}s">${cardSvg(settings.edition, c)}${cardBackHtml()}</div>`).join("")}</div>
     ${q != null ? `<p>Your questions found <b style="color:${heat(q)}">${Math.round(q * 100)}%</b> of the best possible information ${help("Question quality", "Each time you suggested, the notes compared what your question could teach you (in bits) with the best question available in that room. 100% means you always asked the best one.")}</p>` : ""}
     <div class="stack" style="gap:3px">${hands}</div>
     <div class="row" style="justify-content:flex-end;margin-top:10px"><button class="btn" data-close>Look at board</button><button class="btn primary" id="again">New game</button></div>`,

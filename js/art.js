@@ -45,31 +45,46 @@ export function weaponSvg(w, size = 24, color = "currentColor") {
 export function roomSvg(r, size = 24, color = "currentColor") {
   return `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="${color}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">${ROOM_ICON[r]}</svg>`;
 }
-/** A pawn: head + shoulders, in the suspect's colour. */
+/** A plastic pawn seen from the player's seat: round base, cone body, ball head, with a glossy highlight. */
 export function pawnShape(color, x = 0, y = 0, s = 1) {
-  return `<g transform="translate(${x} ${y}) scale(${s})"><path d="M-.36 .42 C-.36 .05 -.22 -.02 -.16 -.08 A.2 .2 0 1 1 .16 -.08 C.22 -.02 .36 .05 .36 .42 Z" fill="${color}" stroke="rgba(0,0,0,.55)" stroke-width=".07"/></g>`;
+  const ink = "rgba(0,0,0,.6)";
+  return `<g transform="translate(${x} ${y}) scale(${s})">
+    <ellipse cx="0" cy=".34" rx=".31" ry=".1" fill="${color}" stroke="${ink}" stroke-width=".045"/>
+    <path d="M-.27 .34C-.22 .12-.13 .02-.09-.07h.18c.04 .09 .13 .19 .18 .41z" fill="${color}" stroke="${ink}" stroke-width=".045"/>
+    <ellipse cx="0" cy="-.06" rx=".15" ry=".05" fill="${color}" stroke="${ink}" stroke-width=".04"/>
+    <circle cy="-.22" r=".16" fill="${color}" stroke="${ink}" stroke-width=".045"/>
+    <path d="M.27 .34C.22 .12 .13 .02 .09-.07h-.06c.05 .12 .1 .24 .12 .41z" fill="#000" opacity=".2"/>
+    <path d="M-.2 .3C-.16 .14-.1 .05-.06-.04" stroke="#fff" stroke-width=".05" stroke-linecap="round" fill="none" opacity=".45"/>
+    <circle cx="-.06" cy="-.28" r=".055" fill="#fff" opacity=".7"/>
+  </g>`;
 }
 export function pawnSvg(sus, size = 28) {
   return `<svg viewBox="-.5 -.5 1 1" width="${size}" height="${size}">${pawnShape(SUSPECT_COLORS[sus], 0, 0.02, 1.05)}</svg>`;
 }
 
-const CAT_TINT = ["#3a1f2a", "#1f2c3a", "#24301f"];
-const CAT_EDGE = ["#a35a6e", "#5a86b3", "#7fa35a"];
+// floor colour of each room on the board; the room cards use the same colour for their picture
+export const ROOM_FLOOR = ["#d9d6cc", "#b27a46", "#c47a52", "#8b5a35", "#6e4c33", "#7b2f2f", "#6d3b55", "#cfc8b8", "#5e3d26"];
+const CAT_INK = ["#7d2433", "#2c4a68", "#3f5a2a"];
 const CAT_WORD = ["SUSPECT", "WEAPON", "ROOM"];
 
-/** Card face, 100 x 140 viewBox. */
+/** Card face, 100 x 156 viewBox (a real card's 57 x 89 shape): category word, a framed picture, the name below. */
 export function cardSvg(ed, c) {
   const cat = c < 6 ? 0 : c < 12 ? 1 : 2;
   const name = cardName(ed, c);
-  let art;
+  let panel, art;
   if (cat === 0) {
     const col = SUSPECT_COLORS[c];
-    art = `<circle cx="50" cy="58" r="30" fill="${col}" opacity=".18"/>
-      <path d="M26 92c0-16 10-24 16-27a14 14 0 1 1 16 0c6 3 16 11 16 27z" fill="${col}" stroke="rgba(0,0,0,.5)" stroke-width="2"/>`;
+    panel = `<rect x="7" y="22" width="86" height="94" rx="3" fill="${col}"/><ellipse cx="50" cy="50" rx="40" ry="26" fill="#fff" opacity=".1"/>`;
+    art = `<ellipse cx="50" cy="69" rx="30" ry="34" fill="#f6efdc" opacity=".22"/>
+      <path d="M20 116c0-20 12-29 19-32a16 16 0 1 1 22 0c7 3 19 12 19 32z" fill="${col}" stroke="#1d1a17" stroke-width="2.2"/>
+      <path d="M40 84l10 12 10-12" fill="none" stroke="#1d1a17" stroke-width="2"/>
+`;
   } else if (cat === 1) {
-    art = `<circle cx="50" cy="58" r="30" fill="#5a86b3" opacity=".16"/><g transform="translate(26 34) scale(2)" fill="none" stroke="#dfe7f3" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">${WEAPON_ICON[c - 6]}</g>`;
+    panel = `<rect x="7" y="22" width="86" height="94" rx="3" fill="#2f3b4c"/><ellipse cx="50" cy="50" rx="40" ry="26" fill="#fff" opacity=".1"/>`;
+    art = `<g transform="translate(22 41) scale(2.35)" fill="none" stroke-linecap="round" stroke-linejoin="round"><g stroke="#111722" stroke-width="3.4">${WEAPON_ICON[c - 6]}</g><g stroke="#d4d9e0" stroke-width="1.6">${WEAPON_ICON[c - 6]}</g></g>`;
   } else {
-    art = `<circle cx="50" cy="58" r="30" fill="#7fa35a" opacity=".16"/><g transform="translate(26 34) scale(2)" fill="none" stroke="#e6efd9" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">${ROOM_ICON[c - 12]}</g>`;
+    panel = `<rect x="7" y="22" width="86" height="94" rx="3" fill="${ROOM_FLOOR[c - 12]}"/><ellipse cx="50" cy="50" rx="40" ry="26" fill="#fff" opacity=".1"/>`;
+    art = `<g transform="translate(22 41) scale(2.35)" fill="none" stroke-linecap="round" stroke-linejoin="round"><g stroke="#1d1a17" stroke-width="3.2" opacity=".55">${ROOM_ICON[c - 12]}</g><g stroke="#fbf3df" stroke-width="1.6">${ROOM_ICON[c - 12]}</g></g>`;
   }
   // long names go on two lines so the letters stay big enough to read on a small hand card
   let lines = [name];
@@ -79,22 +94,23 @@ export function cardSvg(ed, c) {
     lines = [name.slice(0, cut), name.slice(cut + 1)];
   }
   const longest = Math.max(...lines.map((l) => l.length));
-  const fs = Math.min(16, 84 / (longest * 0.6)).toFixed(1);
+  const fs = Math.min(17, 84 / (longest * 0.6)).toFixed(1);
+  const font = `font-family="Georgia, 'Times New Roman', serif" font-weight="700" fill="#1d1a17" text-anchor="middle"`;
   const text = lines.length === 1
-    ? `<text x="50" y="119" text-anchor="middle" font-size="${fs}" font-weight="800" fill="#f1f2f6">${name}</text>`
-    : `<text x="50" y="${117 - fs * 0.55}" text-anchor="middle" font-size="${fs}" font-weight="800" fill="#f1f2f6"><tspan x="50">${lines[0]}</tspan><tspan x="50" dy="${(fs * 1.08).toFixed(1)}">${lines[1]}</tspan></text>`;
-  return `<svg viewBox="0 0 100 140" xmlns="http://www.w3.org/2000/svg">
-    <rect x="1" y="1" width="98" height="138" rx="9" fill="${CAT_TINT[cat]}" stroke="${CAT_EDGE[cat]}" stroke-width="2"/>
-    <rect x="6" y="6" width="88" height="128" rx="6" fill="none" stroke="${CAT_EDGE[cat]}" stroke-opacity=".45"/>
-    <text x="50" y="22" text-anchor="middle" font-size="11" font-weight="800" letter-spacing="1.2" fill="${CAT_EDGE[cat]}">${CAT_WORD[cat]}</text>
-    <g transform="translate(50 54) scale(.9) translate(-50 -58)">${art}</g>
+    ? `<text x="50" y="${140 + fs * 0.35}" font-size="${fs}" ${font}>${name}</text>`
+    : `<text x="50" y="${137 - fs * 0.2}" font-size="${fs}" ${font}><tspan x="50">${lines[0]}</tspan><tspan x="50" dy="${(fs * 1.05).toFixed(1)}">${lines[1]}</tspan></text>`;
+  return `<svg viewBox="0 0 100 156" xmlns="http://www.w3.org/2000/svg">
+    <rect x="0" y="0" width="100" height="156" rx="7" fill="#fbf7ec"/>
+    <text x="50" y="16" text-anchor="middle" font-size="9" font-weight="800" letter-spacing="2" fill="${CAT_INK[cat]}" font-family="Georgia, 'Times New Roman', serif">${CAT_WORD[cat]}</text>
+    ${panel}${art}
+    <rect x="7" y="22" width="86" height="94" rx="3" fill="none" stroke="#1d1a17" stroke-opacity=".55" stroke-width="1.2"/>
+    ${lines.length === 1 ? `<path d="M12 124h76" stroke="${CAT_INK[cat]}" stroke-opacity=".5" stroke-width="1"/>` : ""}
     ${text}
   </svg>`;
 }
-export function cardBackSvg() {
-  return `<svg viewBox="0 0 100 140"><rect x="1" y="1" width="98" height="138" rx="9" fill="#232a3e" stroke="#3a4560" stroke-width="2"/>
-    <g fill="none" stroke="#f0b354" stroke-width="3" opacity=".85"><circle cx="46" cy="64" r="16"/><path d="m58 76 14 14"/></g>
-    <text x="46" y="70" text-anchor="middle" font-size="18" font-weight="800" fill="#f0b354">?</text></svg>`;
+/** The back every card shares: a printed lattice with a magnifier and question mark (CSS draws it: .clue-back). */
+export function cardBackHtml(cls = "") {
+  return `<i class="clue-back ${cls}"></i>`;
 }
 
 /** Dice face pips. */

@@ -117,43 +117,88 @@ select { -webkit-appearance: none; appearance: none; padding-right: 30px; color-
 .who button.off { opacity: .35; }
 .record { display: flex; gap: 14px; justify-content: center; font-size: 13px; color: var(--muted); }
 
-/* ------------------------------------------------------------- game layout */
-.game { display: flex; flex-direction: column; gap: 6px; flex: 1; min-height: 0; }
-.players { display: flex; gap: 4px; flex: none; }
-.pl { flex: 1; min-width: 0; background: var(--card); border: 1px solid var(--line); border-radius: 9px; padding: 3px 5px; display: flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 650; transition: border-color .2s, box-shadow .2s, opacity .3s; position: relative; }
-.pl i { width: 13px; height: 13px; border-radius: 50%; flex: none; box-shadow: inset 0 0 0 1.5px rgba(0,0,0,.35); }
-.pl .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0; }
-.pl .ct { color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
-.pl.turn { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); background: rgba(110,168,254,.12); animation: turnglow 1.8s ease-in-out infinite; }
-@keyframes turnglow { 50% { box-shadow: 0 0 0 1px var(--accent), 0 0 12px rgba(110,168,254,.45); } }
-.pl.asking { border-color: var(--warm); }
-.pl.out { opacity: .4; text-decoration: line-through; }
-.pl .say { position: absolute; left: 50%; top: 100%; transform: translate(-50%, 4px); background: var(--text); color: #11141c; font-size: 11.5px; font-weight: 750; padding: 2px 7px; border-radius: 7px; white-space: nowrap; z-index: 5; animation: pop .25s ease-out; pointer-events: none; }
-@keyframes pop { from { opacity: 0; transform: translate(-50%, 0) scale(.9); } }
+/* ------------------------------------------------------------- game layout: a real table seen from your seat
+   (css/table.css is the shared table kit, copied unchanged; .tbl-surface.tbl-wood-dark is the wooden table top) */
+.game { display: flex; flex-direction: column; gap: 6px; flex: 1; min-height: 0;
+  margin: -8px -10px -6px; padding: 8px 10px 6px; --back: #7a1f2b; --ink: rgba(243, 234, 214, .28); }
+.players { display: flex; gap: 4px; flex: none; align-items: flex-end; min-height: 40px; }
 
+/* a seat: the cards they hold (backs in a small fan) above a name plate in their colour */
+.pl { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 2px; font-size: 12px; font-weight: 650;
+  position: relative; transition: opacity .3s; padding: 0 1px; }
+.pl .plate { display: flex; align-items: center; gap: 5px; max-width: 100%; min-height: 22px; padding: 1px 7px 1px 4px; border-radius: 5px;
+  color: #f6efdc; background: linear-gradient(#3b2a1a, #24180d); border: 1px solid #7a5a2e;
+  box-shadow: inset 0 1px 0 rgba(255,220,150,.22), 0 2px 4px rgba(0,0,0,.45); transition: border-color .2s, box-shadow .2s; }
+.pl i { width: 12px; height: 12px; border-radius: 50%; flex: none; box-shadow: inset 0 -2px 2px rgba(0,0,0,.35), inset 0 1px 1px rgba(255,255,255,.5), 0 1px 1px rgba(0,0,0,.5); }
+.pl .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.pl .backs { position: relative; height: 22px; width: calc(14px + (var(--n) - 1) * 6px); flex: none; }
+.pl .backs i { position: absolute; left: calc(50% - 7px); bottom: 0; width: 14px; height: 21px; border-radius: 2px;
+  transform-origin: 50% 110%; transform: translateX(calc(var(--k) * 6px)) rotate(calc(var(--k) * 8deg));
+  background-color: var(--back);
+  background-image: repeating-linear-gradient(45deg, var(--ink) 0 1px, transparent 1px 3px), repeating-linear-gradient(-45deg, var(--ink) 0 1px, transparent 1px 3px);
+  box-shadow: inset 0 0 0 1.5px #f3ead6, 0 1px 2px rgba(0,0,0,.5); }
+.pl.turn .plate { border-color: #f0c35a; box-shadow: 0 0 0 2px rgba(240,195,90,.45), 0 2px 4px rgba(0,0,0,.45); animation: turnglow 1.8s ease-in-out infinite; }
+@keyframes turnglow { 50% { box-shadow: 0 0 0 2px rgba(240,195,90,.55), 0 0 14px rgba(240,195,90,.55); } }
+.pl.asking .plate { border-color: var(--warm); }
+.pl.out { opacity: .45; }
+.pl.out .nm { text-decoration: line-through; }
+.pl .say { position: absolute; left: 50%; top: 100%; transform: translate(-50%, 4px); background: #f6efdc; color: #2b1d12; font-size: 11.5px; font-weight: 750; padding: 2px 7px; border-radius: 7px; white-space: nowrap; z-index: 5; animation: pop .25s ease-out; pointer-events: none; box-shadow: 0 2px 6px rgba(0,0,0,.45); }
+@keyframes pop { from { opacity: 0; transform: translate(-50%, 0) scale(.9); } }
+.pl.away { cursor: pointer; }
+.pl.away .plate { border-style: dashed; }
+
+/* the detective notepad, lying on the table (opens the notes on a phone) */
+.notepad-btn { flex: none; align-self: stretch; min-width: 52px; min-height: 40px; border: 0; padding: 0 6px; cursor: pointer; border-radius: 3px;
+  color: #2b2418; font: 700 12px/1 Georgia, "Times New Roman", serif; transform: rotate(3deg);
+  background: repeating-linear-gradient(#f4ecd8 0 7px, #b9c7dc 7px 8px), #f4ecd8; background-position: 0 4px;
+  box-shadow: inset 0 3px 0 #9a2b2b, 1px 2px 4px rgba(0,0,0,.5); }
+.notepad-btn span { background: #f4ecd8; padding: 1px 2px; }
+
+/* the board: printed cardboard lying on the table, with a thick edge and a soft shadow */
 .boardwrap { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; position: relative; }
 .boardwrap svg.board { height: 100%; width: 100%; max-width: 100%; display: block; touch-action: manipulation; }
 .board .sq { transition: fill .2s; }
-.board .reach { fill: rgba(64,128,255,.72); stroke: #fff; stroke-opacity: .7; stroke-width: .06; cursor: pointer; animation: glow 1.4s ease-in-out infinite; }
+.board .reach { fill: rgba(64,128,255,.72); stroke: #fff; stroke-opacity: .8; stroke-width: .06; cursor: pointer; animation: glow 1.4s ease-in-out infinite; }
 @keyframes glow { 50% { fill: rgba(64,128,255,.95); } }
 .board .room-hit { fill: transparent; cursor: default; }
-.board .room-hit.can { fill: rgba(240,179,84,.22); cursor: pointer; stroke: var(--warm); stroke-width: .12; animation: glow2 1.4s ease-in-out infinite; }
-@keyframes glow2 { 50% { fill: rgba(240,179,84,.38); } }
+.board .room-hit.can { fill: rgba(240,179,84,.38); cursor: pointer; animation: glow2 1.4s ease-in-out infinite; }
+@keyframes glow2 { 50% { fill: rgba(240,179,84,.6); } }
 .board .tok { transition: transform .32s cubic-bezier(.3,.7,.3,1); }
 .board .wep { transition: transform .5s cubic-bezier(.3,.7,.3,1); }
 .board text { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; pointer-events: none; }
+.board text[font-family] { font-family: Georgia, "Times New Roman", serif; }
+/* the room odds are pencilled on the floor: a dark halo keeps them readable on every floor */
+.board .roomodds { paint-order: stroke; stroke: #1a130d; stroke-width: .16; stroke-linejoin: round; }
 
-.bar { flex: none; background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 8px; display: flex; flex-direction: column; gap: 7px; min-height: 104px; }
-.bar { transition: border-color .25s, box-shadow .25s; }
-.bar.mine { border-color: rgba(110,168,254,.7); box-shadow: 0 0 0 1px rgba(110,168,254,.35), 0 0 18px rgba(110,168,254,.12); }
-.bar .msg { font-size: 15px; font-weight: 700; min-height: 26px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; row-gap: 0; }
-.bar .msg .sub { color: var(--muted); font-weight: 500; font-size: 13px; }
-.bar .acts { display: flex; gap: 6px; flex-wrap: wrap; min-height: 44px; }
-.bar .acts .btn { flex: 1; min-width: 0; }
-.dice { display: inline-flex; gap: 4px; }
-.die { width: 26px; height: 26px; border-radius: 6px; background: #f4efe2; display: inline-block; position: relative; box-shadow: inset 0 -2px 0 rgba(0,0,0,.18); animation: tumble .45s ease-out; }
-.die b { position: absolute; width: 5px; height: 5px; border-radius: 50%; background: #1c1c22; }
-@keyframes tumble { from { transform: rotate(-200deg) scale(.6); opacity: .3; } }
+/* your turn: what to do + the buttons, on the table edge in front of you */
+.bar { flex: none; padding: 2px 0 0; display: flex; flex-direction: column; gap: 5px; border-radius: 12px; transition: box-shadow .25s; }
+.bar .msg { font-size: 15px; font-weight: 700; min-height: 26px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; row-gap: 0; color: #f6efdc; text-shadow: 0 1px 2px rgba(0,0,0,.7); }
+.bar .msg .sub { color: #d8cdb4; font-weight: 500; font-size: 13px; }
+.bar.mine .msg { color: #fff; }
+.bar .acts { display: flex; gap: 6px; min-height: 44px; }
+/* buttons never wrap onto a second row, so the board never changes size between turns */
+.bar .acts .btn { flex: 1; min-width: 0; height: 44px; font-size: 13.5px; line-height: 1.1; padding: 4px 6px; box-shadow: 0 2px 4px rgba(0,0,0,.4); }
+.bar:not(.mine) .acts .btn:not(.primary):not(.warm):not(.danger) { background: rgba(22,25,35,.85); }
+.dice { display: inline-flex; gap: 6px; }
+.die { width: 28px; height: 28px; border-radius: 22%; display: inline-block; position: relative; animation: tumble .45s ease-out;
+  background: radial-gradient(circle at 30% 25%, rgba(255,255,255,.9), transparent 45%), #f6f2e8;
+  box-shadow: inset -2px -3px 3px rgba(0,0,0,.22), inset 2px 2px 2px rgba(255,255,255,.8), 2px 4px 5px rgba(0,0,0,.5); }
+.die b { position: absolute; width: 5px; height: 5px; border-radius: 50%; background: #1c1c22; box-shadow: inset 0 1px 1px rgba(0,0,0,.6); }
+/* the Roll button carries the ivory die you pick up */
+#bRoll { display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
+.rolldie { display: inline-flex; transform: rotate(-12deg); }
+.rolldie .die { width: 22px; height: 22px; animation: none; }
+.rolldie .die b { width: 4px; height: 4px; margin: .5px; }
+@keyframes tumble { from { transform: translate(-14px, -10px) rotate(-260deg) scale(.7); } 70% { transform: rotate(12deg); } }
+
+/* your seat: your name plate and your hand, held as a fan of real cards at the bottom edge */
+.bar .msgrow { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.bar .msgrow .msg { flex: 1; min-width: 0; }
+#meSeat { flex: none; }
+#meSeat .pl .plate { padding-right: 7px; }
+.myseat { flex: none; display: flex; justify-content: center; }
+.hand { flex: 1; min-width: 0; max-width: 520px; --card-w: 58px; --ratio: 57 / 89; }
+@media (min-width: 900px) { .hand { --card-w: 80px; max-width: 640px; } }
 
 /* the pick grid for suggestions / accusations */
 .picker { display: flex; flex-direction: column; gap: 5px; }
@@ -166,19 +211,31 @@ select { -webkit-appearance: none; appearance: none; padding-right: 30px; color-
 .chip.best::after { content: "★"; position: absolute; top: 0; right: 3px; font-size: 9px; color: var(--warm); }
 .chip i.dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
 
-/* cards in hand */
-.hand { display: flex; gap: 4px; overflow-x: auto; flex: none; padding: 1px; scrollbar-width: none; }
-.hand::-webkit-scrollbar { display: none; }
-.cardf { width: 50px; height: 70px; flex: none; border-radius: 6px; overflow: hidden; box-shadow: 0 2px 5px rgba(0,0,0,.4); transition: transform .2s, box-shadow .2s; cursor: default; position: relative; }
-.cardf svg { width: 100%; height: 100%; display: block; }
-/* hand cards share the row: as big as they can be, never scrolling sideways */
-.hand .cardf { flex: 1 1 0; min-width: 0; max-width: 56px; height: auto; aspect-ratio: 5 / 7; }
-@media (min-width: 900px) { .hand .cardf { max-width: 72px; } }
-.cardf.pick { cursor: pointer; animation: bob 1.3s ease-in-out infinite; outline: 2px solid var(--warm); outline-offset: 1px; }
-.cardf.lg { width: 92px; height: 128px; border-radius: 9px; }
+/* cards: real 57 x 89 cards with rounded corners, a paper sheen, and the shared printed back behind */
+.cardf { width: 50px; aspect-ratio: 57 / 89; height: auto; flex: none; border-radius: 6px; position: relative; cursor: default;
+  box-shadow: 0 1px 1px rgba(0,0,0,.3), 0 3px 7px rgba(0,0,0,.35); transition: transform .2s, box-shadow .2s; }
+.cardf svg { width: 100%; height: 100%; display: block; border-radius: inherit; }
+.cardf::after { content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+  background: linear-gradient(135deg, rgba(255,255,255,.3), transparent 38%, transparent 70%, rgba(0,0,0,.07)); box-shadow: inset 0 0 0 1px rgba(0,0,0,.25); }
+/* the back is shown only while a card is still turning over (no reliance on backface-visibility, which WebKit drops in flat layers) */
+.clue-back { position: absolute; inset: 0; border-radius: inherit; opacity: 0; pointer-events: none;
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Ccircle cx='17' cy='17' r='10' fill='%237a1f2b' stroke='%23f3ead6' stroke-width='3'/%3E%3Cpath d='m24.5 24.5 9 9' stroke='%23f3ead6' stroke-width='4.5' stroke-linecap='round'/%3E%3Ctext x='17' y='22' text-anchor='middle' font-size='14' font-weight='700' font-family='Georgia,serif' fill='%23f3ead6'%3E%3F%3C/text%3E%3C/svg%3E") center / 52% no-repeat,
+    repeating-linear-gradient(45deg, rgba(243,234,214,.22) 0 1px, transparent 1px 5px), repeating-linear-gradient(-45deg, rgba(243,234,214,.22) 0 1px, transparent 1px 5px), #7a1f2b;
+  box-shadow: inset 0 0 0 3px #f3ead6, inset 0 0 0 4px rgba(0,0,0,.25); }
+/* in the held fan the kit positions each card; tbl-card brings the real shape, our face is the SVG */
+.hand .cardf.tbl-card { width: var(--card-w); border: 0; background: none; border-radius: calc(var(--card-w) * .08); cursor: default; }
+.hand .cardf.tbl-card::after { box-shadow: inset 0 0 0 1px rgba(0,0,0,.25); }
+.cardf.pick { cursor: pointer; animation: bob 1.3s ease-in-out infinite; outline: 2px solid var(--warm); outline-offset: 2px; }
+.cardf.lg { width: 92px; border-radius: 8px; }
 @keyframes bob { 50% { transform: translateY(-4px); } }
 .deal-in { animation: dealin .45s cubic-bezier(.3,.7,.3,1) both; }
 @keyframes dealin { from { transform: translateY(-40px) rotate(-8deg); opacity: 0; } }
+/* a card turned face up with a 3-D turn (shown to you, or the case file opened) */
+.turnup { animation: turnup .7s cubic-bezier(.3,.7,.3,1) both; }
+.turnup .clue-back { animation: backshow .7s cubic-bezier(.3,.7,.3,1) both; animation-delay: inherit; }
+@keyframes backshow { 0%, 76% { opacity: 1; } 77%, 100% { opacity: 0; } }
+@keyframes turnup { from { transform: perspective(700px) translateY(-24px) rotateY(180deg); } 55% { transform: perspective(700px) translateY(-8px) rotateY(180deg); } to { transform: perspective(700px) rotateY(0deg); } }
 
 /* notes grid (play + notepad) */
 .notes { overflow: auto; min-height: 0; border-radius: 10px; border: 1px solid var(--line); background: var(--bg-soft); }
@@ -193,27 +250,68 @@ select { -webkit-appearance: none; appearance: none; padding-right: 30px; color-
 .notes tr.solved td.nm { color: var(--warm); }
 .notes .mine td.nm::after { content: " ●"; color: var(--accent); font-size: 9px; }
 
+/* in a game the notes are your detective sheet: cream paper, blue rules, pencil marks */
+.game .side { color: #2b2418; background: #f4ecd8; border-radius: 3px; padding: 10px 10px 8px;
+  background-image: linear-gradient(90deg, transparent 30px, rgba(196,74,74,.35) 30px 31px, transparent 31px);
+  box-shadow: inset 0 4px 0 #9a2b2b, 0 2px 3px rgba(0,0,0,.4), 0 10px 22px rgba(0,0,0,.4); }
+.game .side .label { color: #6b5a3e; font-family: Georgia, "Times New Roman", serif; }
+.game .side .q { background: #efe5cc; border-color: #c9b88f; color: #6b5a3e; }
+.game .side .btn.ghost { color: #2b2418; border-color: #c9b88f; }
+.game .side .envline, .game .side .envline .muted { color: #4a3f2c; }
+.game .side .notes { background: transparent; border: 0; border-radius: 0; }
+.game .side .notes th { background: #f4ecd8; color: #6b5a3e; border-bottom: 1.5px solid #8aa0c4; }
+.game .side .notes td { color: #2b2418; border-bottom: 1px solid #b9c7dc; }
+.game .side .notes tr.cat td { background: transparent; color: #9a2b2b; font-family: Georgia, "Times New Roman", serif; }
+.game .side .notes td.nm { font-family: Georgia, "Times New Roman", serif; font-weight: 700; }
+.game .side .notes tr.solved td.nm { color: #b0701a; }
+.game .side .notes .mine td.nm::after { color: #2f5fb0; }
+.game .side .notes td .x { color: #8b8270; }
+.game .side .notes td .y { color: #217a46; }
+/* odds are coloured for a dark screen: darken them so they read like ink on the paper */
+.game .side .notes td[style], .game .side .envline b { filter: brightness(.58) saturate(1.6); }
+/* the pale suspect colours (white, mustard) as darker ink for the column heads */
+.game .side .notes th[style*="#f2f2ee"] { color: #8a8574 !important; }
+.game .side .notes th[style*="#e8c24a"] { color: #a8841a !important; }
+.game .side .notes td[style="color:#c9cede"] { color: #4a3f2c !important; filter: none; }
+.game .side .log { color: #5a4c34; }
+.game .side .log div { border-bottom: 1px solid #b9c7dc; }
+.game .side .log b { color: #2b2418; }
+
 .sidepanel { display: none; }
 .log { font-size: 12.5px; color: var(--muted); overflow-y: auto; min-height: 0; }
 .log div { padding: 2px 0; border-bottom: 1px solid #1f2433; }
 .log b { color: var(--text); font-weight: 650; }
 
 @media (min-width: 900px) {
-  .game { display: grid; grid-template-columns: minmax(0, 1fr) 380px; grid-template-rows: auto minmax(0, 1fr) auto; gap: 10px; }
-  .game .players { grid-column: 1 / 3; }
-  .game .boardwrap { grid-column: 1; grid-row: 2 / 4; }
-  .game .side { grid-column: 2; grid-row: 2; display: flex; flex-direction: column; gap: 8px; min-height: 0; }
-  .game .bar { grid-column: 2; grid-row: 3; }
-  .pl { font-size: 13.5px; padding: 5px 8px; }
+  /* laptop: the table on the left (others across, board, your hand), your detective sheet beside it */
+  .game { display: grid; grid-template-columns: minmax(0, 1fr) 380px; grid-template-rows: auto minmax(0, 1fr) auto; gap: 10px 18px; margin: -14px -18px; padding: 12px 18px; }
+  .game .players { grid-column: 1; grid-row: 1; justify-content: space-around; min-height: 46px; }
+  .game .boardwrap { grid-column: 1; grid-row: 2; }
+  .game .myseat { grid-column: 1; grid-row: 3; }
+  .game .side { grid-column: 2; grid-row: 1 / 3; display: flex; flex-direction: column; gap: 8px; min-height: 0; transform: rotate(.6deg); }
+  .game .bar { grid-column: 2; grid-row: 3; align-self: end; padding: 8px; background: rgba(12,10,8,.35); }
+  .pl { flex: 0 1 150px; font-size: 13.5px; }
+  .pl .backs { height: 30px; width: calc(20px + (var(--n) - 1) * 9px); }
+  .pl .backs i { width: 20px; height: 30px; left: calc(50% - 10px); transform: translateX(calc(var(--k) * 9px)) rotate(calc(var(--k) * 7deg)); }
+  .pl .plate { padding: 2px 9px 2px 5px; }
   .chip { font-size: 13px; }
   .notes table { font-size: 13px; }
   .notes th, .notes td { padding: 4px 5px; }
-  .pl .nm { flex: 0 1 auto; }
+  .game .side .notes th, .game .side .notes td { padding: 4px 3px; }
+  .game .side .notes td.nm { font-size: 12.5px; }
   .setup-wrap { max-width: 580px; }
+}
+@media (max-width: 899px) and (min-aspect-ratio: 4/3) {
+  .game { display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr) auto auto minmax(0, 1fr); column-gap: 12px; }
+  .game .boardwrap { grid-column: 1; grid-row: 1 / 6; aspect-ratio: 25.2 / 26.2; height: 100%; }
+  .game .players { grid-column: 2; grid-row: 1; }
+  .game .bar { grid-column: 2; grid-row: 3; }
+  .game .myseat { grid-column: 2; grid-row: 4; }
+  .hand { --card-w: 46px; }
 }
 @media (max-width: 899px) {
   .game .side { display: none; }
-  .game.notesopen .side { display: flex; position: absolute; inset: 0 0 0 0; z-index: 20; background: var(--bg); padding: 8px 10px; flex-direction: column; gap: 8px; animation: slideup .25s ease-out; }
+  .game.notesopen .side { display: flex; position: absolute; inset: 4px 6px; z-index: 20; flex-direction: column; gap: 8px; animation: slideup .25s ease-out; }
 }
 @keyframes slideup { from { transform: translateY(30px); opacity: 0; } }
 
@@ -227,8 +325,8 @@ select { -webkit-appearance: none; appearance: none; padding-right: 30px; color-
 .sheet h3 { margin: 0 0 8px; font-size: 17px; }
 /* a tall sheet scrolls, but its buttons stay on screen */
 .sheet > .row:last-child { position: sticky; bottom: calc(-14px - env(safe-area-inset-bottom)); background: var(--card); padding: 8px 0 calc(14px + env(safe-area-inset-bottom)); margin-bottom: calc(-14px - env(safe-area-inset-bottom)); z-index: 2; }
-.sheet .cardf.lg { width: 110px; height: 154px; border-radius: 10px; }
-@media (min-width: 900px) { .sheet .cardf.lg { width: 130px; height: 182px; border-radius: 12px; } }
+.sheet .cardf.lg { width: 104px; border-radius: 8px; }
+@media (min-width: 900px) { .sheet .cardf.lg { width: 124px; border-radius: 10px; } }
 .sheet p { margin: 6px 0; color: #c9cede; font-size: 14px; }
 #toast { position: fixed; left: 50%; bottom: calc(var(--tabh) + 16px); transform: translateX(-50%); background: var(--text); color: #11141c; padding: 8px 14px; border-radius: 10px; font-weight: 650; font-size: 14px; z-index: 60; opacity: 0; pointer-events: none; transition: opacity .2s; max-width: 90vw; text-align: center; }
 #toast.on { opacity: 1; }
@@ -263,12 +361,10 @@ select { -webkit-appearance: none; appearance: none; padding-right: 30px; color-
 .chart svg { width: 100%; height: auto; display: block; }
 @media (min-width: 900px) { #notesBtn, #closeNotes { display: none; } }
 @media (max-width: 520px) { .setrow { flex-wrap: wrap; } .setrow .seg { flex: 1 1 100%; } }
-.pl.away { cursor: pointer; border-style: dashed; }
 @media (max-width: 520px) {
   /* sheet chips: drop the small weapon/room drawings so whole names fit */
   #overlay .chip > svg, #troom .chip > svg { display: none; }
   #overlay .chip, #troom .chip { gap: 3px; padding: 4px 5px; }
-  .pl { gap: 3px; padding: 3px 4px; }
 }
 
 /* Sound & effects (js/fx.js): its rows take this page's own row, switch and segment look */
@@ -288,7 +384,8 @@ select { -webkit-appearance: none; appearance: none; padding-right: 30px; color-
 .fx-set .fx-vol { accent-color: var(--accent); }
 .fx-set .fx-why { font-size: 12.5px; }
 /* a face-down card passed from one player to another */
-.fx-cardback { position: fixed; width: 18px; height: 26px; border-radius: 3px; pointer-events: none; z-index: 60;
-  background: repeating-linear-gradient(45deg, #7a1f2b 0 3px, #5a1520 3px 6px); border: 1.5px solid #e2c27a; box-shadow: 0 2px 6px rgba(0,0,0,.5); }
+.fx-cardback { position: fixed; width: 22px; height: 34px; border-radius: 3px; pointer-events: none; z-index: 60; transform: rotate(-8deg);
+  background: repeating-linear-gradient(45deg, rgba(243,234,214,.28) 0 1px, transparent 1px 3px), repeating-linear-gradient(-45deg, rgba(243,234,214,.28) 0 1px, transparent 1px 3px), #7a1f2b;
+  box-shadow: inset 0 0 0 2px #f3ead6, 0 3px 8px rgba(0,0,0,.55); }
 /* Animations off (Settings): everything on the page is still */
 html.fx-still *, html.fx-still *::before, html.fx-still *::after { animation: none !important; transition: none !important; }
