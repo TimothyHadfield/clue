@@ -19,6 +19,7 @@ function shuffle(a, rng) {
   for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(rng() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
   return a;
 }
+const inRange = (x, lo, hi) => Number.isInteger(x) && x >= lo && x < hi;
 const roll = (rng) => 1 + Math.floor(rng() * 6);
 
 export function setup(n, options = {}, rng = Math.random, seats = []) {
@@ -174,7 +175,7 @@ export function apply(s, seat, a, rng = Math.random) {
       if (!canSuggestHere(s)) throw new Error("you can't make a suggestion now");
       const room = s.pos[me].room;
       const sus = a.suspect, wep = a.weapon;
-      if (!(sus >= 0 && sus < 6) || !(wep >= 6 && wep < 12)) throw new Error("pick a suspect and a weapon");
+      if (!inRange(sus, 0, 6) || !inRange(wep, 6, 12)) throw new Error("pick a suspect and a weapon");
       // the named suspect's token and the weapon are brought into the room
       const prevPlace = s.pos[sus];
       s.pos[sus] = { room };
@@ -189,8 +190,8 @@ export function apply(s, seat, a, rng = Math.random) {
     }
     case "accuse": {
       if (!["start", "move", "suggest", "post"].includes(s.phase)) throw new Error("not now");
-      const cards = [a.suspect, a.weapon, a.room != null ? 12 + a.room : -1];
-      if (!(cards[0] >= 0 && cards[0] < 6 && cards[1] >= 6 && cards[1] < 12 && cards[2] >= 12 && cards[2] < 21)) throw new Error("name a suspect, a weapon and a room");
+      if (!inRange(a.suspect, 0, 6) || !inRange(a.weapon, 6, 12) || !inRange(a.room, 0, 9)) throw new Error("name a suspect, a weapon and a room");
+      const cards = [a.suspect, a.weapon, 12 + a.room];
       const correct = cards.every((c, i) => c === s.env[i]);
       s.log.push({ t: "accuse", by: seat, cards, correct, turnNo: s.turnNo });
       s.envSeen[seat] = true;
@@ -240,8 +241,33 @@ export function privateView(s, seat) {
   return v;
 }
 
+/** A plain legal move for any phase: used when a computer's own choice fails, so the table never freezes. */
+export function safeAction(s, seat) {
+  if (s.phase === "disprove") return { type: "show", card: s.hands[seat].find((c) => s.sugg.cards.includes(c)) };
+  if (s.phase === "start") return canPassage(s) ? { type: "passage" } : { type: "roll" };
+  if (s.phase === "move") {
+    const m = movesFor(s);
+    if (m.rooms.length) return { type: "move", room: m.rooms[0].room };
+    if (m.squares.length) return { type: "move", sq: m.squares[0] };
+  }
+  return { type: "end" };
+}
+
+/** The computer's move, checked against the rules first; anything it can't do becomes safeAction. */
+function bot(ctx, seat, rng) {
+  const s = ctx && ctx.state;
+  try {
+    const a = botAction(ctx, seat, rng);
+    if (s) apply(JSON.parse(JSON.stringify(s)), seat, a, () => 0.5);
+    return a;
+  } catch (e) {
+    if (!s) throw e;
+    if (typeof console !== "undefined") console.warn("computer fallback:", e && e.message);
+    return safeAction(s, seat);
+  }
+}
+
 export const game = {
   id: "clue", minSeats: MIN, maxSeats: MAX,
-  setup, toAct, apply, publicView, privateView, isOver,
-  bot: (ctx, seat, rng) => botAction(ctx, seat, rng),
+  setup, toAct, apply, publicView, privateView, isOver, bot,
 };

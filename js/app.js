@@ -41,6 +41,9 @@ window.addEventListener("popstate", () => {
   if (takeOwnBack()) { if (sheetOpen() || (gameEl && gameEl.classList.contains("notesopen"))) pushLayer("again"); return; }
   if (sheetOpen()) { if (o.dataset.lock === "1") pushLayer("sheet"); else closeSheet(true); return; }
   if (gameEl && gameEl.classList.contains("notesopen")) { gameEl.classList.remove("notesopen"); return; }
+  // Back from the online form (or the lobby you reached from it) goes back to the Play setup
+  if (view === "onlineForm") { setupView(); showTab("play", false); return; }
+  if (view === "lobby") { if (online) online.leave(); setupView(); showTab("play", false); return; }
   showTab(location.hash.slice(1), false);
 });
 
@@ -78,6 +81,7 @@ function localRoom({ seats, options, state }) {
     mode: "local",
     on(ev, f) { if (ev === "change") handlers.push(f); },
     act(a) {
+      if (closed) return { ok: false, message: "Not your turn" };
       if (!game.toAct(st).includes(humanSeat)) return { ok: false, message: "Not your turn" };
       try { st = game.apply(JSON.parse(JSON.stringify(st)), humanSeat, a, Math.random); }
       catch (e) { FX.play("error"); toast(e.message); return { ok: false, message: e.message }; }
@@ -142,14 +146,60 @@ function startLocal(resume) {
   }
   room = localRoom({ seats, options, state });
   room.on("change", onSnap);
+  paused = false;
+  store.set("owner", TAB);
   room.start();
 }
 
+// ------------------------------------------------------------------ the same game open in two tabs
+// Only one tab plays the saved game at a time: the one you opened or looked at last. The other
+// stops its computers, and when you come back to it, it picks up the game from where the other left it.
+const TAB = Math.random().toString(36).slice(2);
+let paused = false;
+window.addEventListener("storage", (e) => {
+  if (e.key !== "clue.owner" || e.newValue === JSON.stringify(TAB)) return;
+  if (room && room.mode === "local") { room.close(); paused = true; }
+});
+function takeBack() {
+  if (!paused) return;
+  paused = false;
+  if (sheetOpen()) closeSheet();
+  room = null; snapNow = null; prevPub = null; gameEl = null;
+  const saved = store.get("local", null);
+  if (validSave(saved) && !saved.state.over) startLocal(saved);
+  else setupView();
+}
+window.addEventListener("focus", takeBack);
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") takeBack(); });
+
+/** A saved game this version can play (anything else is dropped, never crashes the page). */
+function validSave(sv) {
+  try {
+    const st = sv && sv.state, n = st && st.n;
+    return Array.isArray(sv.seats) && Number.isInteger(n) && n >= 3 && n <= 6 && sv.seats.length === n && sv.seats.some((x) => x && x.kind === "human")
+      && ["hands", "chars", "sizes", "seen", "showed", "out", "envSeen", "summoned"].every((k) => Array.isArray(st[k]) && st[k].length === n)
+      && Array.isArray(st.pos) && st.pos.length === 6 && Array.isArray(st.env) && st.env.length === 3
+      && Array.isArray(st.weaponRoom) && st.weaponRoom.length === 6 && Array.isArray(st.log) && typeof st.phase === "string"
+      && Number.isInteger(st.turn) && st.turn >= 0 && st.turn < n && !!st.opts && typeof st.opts === "object";
+  } catch (e) { return false; }
+}
+/** Count a finished local game once in your win/loss record. */
+function recordLocal(turnNo, env, won) {
+  const k = "counted:" + turnNo + ":" + env.join(",");
+  if (store.get(k, false)) return;
+  const rec = store.get("record", { w: 0, l: 0 });
+  if (won) rec.w++; else rec.l++;
+  store.set("record", rec);
+  store.set(k, true);
+}
+
 function onSnap(snap) {
-  if (snap.status === "lobby" || snap.status === "joining") { lobbyView(snap); return; }
+  if (snap.status === "joining") { const b = $("#oJoin"); if (b) b.textContent = "Joining…"; return; }   // no seats yet: keep the form
+  if (snap.status === "lobby") { lobbyView(snap); return; }
   if (!snap.pub) {
     if (view === "onlineForm" || view === "setup") return;   // a failed join keeps the form and what you typed
     if (snap.status === "closed") toast("The room was closed", 3000);
+    if (snap.status === "left") toast("The host gave your seat to a computer", 3500);
     if (snap.status === "closed" || snap.status === "left" || snap.status === "none") setupView();
     return;
   }
@@ -297,16 +347,21 @@ async function renderGame(snap, prev, fresh) {
   updateNotes(snap);
   renderLog(pub);
   announce(snap, prev);
-  if (pub.over && !(pp && pp.over)) setTimeout(() => gameOver(snap), 900 / settings.speed);
+  if (fresh && pub.over && !(pp && pp.over)) setTimeout(() => gameOver(snap), 900 / settings.speed);
 }
 
 function seatName(pub, i, snap) {
   const sn = snap && snap.seats && snap.seats[i];
   const base = E().short[pub.chars[i]];
   if (snap && i === snap.mySeat) return "You";
-  if (sn && sn.kind === "human" && sn.name && snap.mode === "online") return sn.name;
+  if (sn && sn.kind === "human" && sn.name && snap.mode === "online") {
+    const twin = snap.seats.some((o, j) => j !== i && o && o.kind === "human" && o.name === sn.name);
+    return twin ? `${sn.name} (${base})` : sn.name;
+  }
   return base;
 }
+// whole characters, so a short label never cuts an emoji in half
+const letters = (t) => { try { return [...new Intl.Segmenter().segment(t)].map((x) => x.segment); } catch (e) { return Array.from(t); } };
 function renderPlayers(snap) {
   const pub = snap.pub;
   const others = pub.chars.map((_, i) => i).filter((i) => i !== snap.mySeat);
@@ -320,7 +375,7 @@ function renderPlayers(snap) {
     const sn = snap.seats && snap.seats[i];
     const away = snap.mode === "online" && i !== snap.mySeat && sn && sn.kind === "human" && !sn.online;
     const full = seatName(pub, i, snap);
-    const label = i === snap.mySeat ? "You" : Array.from(full).slice(0, keep).join("");
+    const label = i === snap.mySeat ? "You" : letters(full).slice(0, keep).join("");
     const ctl = away && snap.isHost && !pub.over ? ` data-away="1"` : "";
     const n = pub.sizes[i];
     const backs = i === snap.mySeat ? "" : `<span class="backs" style="--n:${n}">${Array.from({ length: n }, (_, k) => `<i style="--k:${k - (n - 1) / 2}"></i>`).join("")}</span>`;
@@ -409,7 +464,8 @@ function renderBar(snap) {
     msg = `In the ${esc(E().rooms[place.room])}`;
     acts = `<button class="btn warm" id="bSug">Suggest</button><button class="btn" id="bAcc">Accuse</button><button class="btn ghost" id="bEnd">End turn</button>`;
   } else if (ph === "post") {
-    msg = pub.roll && !pub.suggested && !pub.entered ? `${dice(pub.roll)} <span class="sub">Moved</span>` : "Your move is done";
+    const boxed = pub.last && pub.last.t === "roll" && pub.last.by === me;   // rolled, but every way out is blocked
+    msg = boxed ? `${dice(pub.roll)} <span class="sub">Blocked in — no move</span>` : pub.roll && !pub.suggested && !pub.entered ? `${dice(pub.roll)} <span class="sub">Moved</span>` : "Your move is done";
     acts = `<button class="btn" id="bAcc">Accuse</button><button class="btn primary" id="bEnd">End turn</button>`;
   } else {
     const t = pub.phase === "disprove" ? `${esc(seatName(pub, pub.sugg.asking, snap))} is choosing a card…` : `${esc(seatName(pub, pub.turn, snap))}'s turn`;
@@ -460,6 +516,7 @@ function reachOdds(pub, place) {
 
 let lastAct = { k: "", t: 0 };
 async function act(a) {
+  if (paused) { takeBack(); return; }
   if (!snapNow) return;
   const k = JSON.stringify(a), t = Date.now();
   if (k === lastAct.k && t - lastAct.t < 600) return;   // a double tap sends once
@@ -633,13 +690,7 @@ function gameOver(snap) {
   if (!pub.reveal) return;
   const me = snap.mySeat;
   const won = pub.winner === me;
-  if (snap.mode === "local" && !store.get("counted:" + pub.turnNo + ":" + pub.reveal.env.join(","), false)) {
-    const rec = store.get("record", { w: 0, l: 0 });
-    if (won) rec.w++; else rec.l++;
-    store.set("record", rec);
-    store.set("counted:" + pub.turnNo + ":" + pub.reveal.env.join(","), true);
-    store.del("local");
-  }
+  if (snap.mode === "local") { recordLocal(pub.turnNo, pub.reveal.env, won); store.del("local"); }
   const q = myQuestions.length ? myQuestions.reduce((a, x) => a + (x.best > 0 ? x.got / x.best : 1), 0) / myQuestions.length : null;
   const hands = pub.reveal.hands.map((h, i) => `<div class="row" style="font-size:13px;gap:6px"><i style="width:10px;height:10px;border-radius:50%;background:${SUSPECT_COLORS[pub.chars[i]]};display:inline-block"></i><b style="min-width:58px">${esc(seatName(pub, i, snap))}</b><span class="muted">${h.map(sname).join(", ")}</span></div>`).join("");
   sheet(`<h3>${pub.winner >= 0 ? (won ? "You solved it!" : esc(seatName(pub, pub.winner, snap)) + " solved it") : "Nobody solved it"}</h3>
@@ -707,6 +758,7 @@ function getOnline() {
 function onlineView() {
   if (room && room.close) room.close();
   room = null; gameEl = null; view = "onlineForm";
+  pushLayer("online");
   const name = store.get("name", "");
   play.innerHTML = `<div class="setup-wrap"><div class="hero">${logoSvg()}<p>Play with friends on their own phones.</p></div>
     <div class="panel stack">
@@ -716,7 +768,7 @@ function onlineView() {
       <p class="muted" style="margin:0;font-size:13px">Room size and your suspect come from the Play screen. Empty seats become computers.</p>
       <button class="btn ghost" id="oBack">Back</button>
     </div></div>`;
-  $("#oBack").onclick = setupView;
+  $("#oBack").onclick = () => { setupView(); popLayer(); };
   $("#oCreate").onclick = async () => {
     const nm = $("#oName").value.trim() || "Player"; store.set("name", nm);
     const chars = suspectsFor(settings.players, settings.me);
@@ -731,7 +783,7 @@ function onlineView() {
     if (code.length !== 5) { toast("Codes are 5 letters"); return; }
     $("#oJoin").disabled = true;
     const r = await getOnline().joinRoom(code, nm);
-    if (!r.ok) { toast(r.message || "Couldn't join that room"); const b = $("#oJoin"); if (b) b.disabled = false; }
+    if (!r.ok) { toast(r.message || "Couldn't join that room"); const b = $("#oJoin"); if (b) { b.disabled = false; b.textContent = "Join"; } }
   };
 }
 function lobbyView(snap) {
@@ -786,10 +838,15 @@ showTab(location.hash.slice(1) || "play", false);
 (async () => {
   const saved = store.get("local", null);
   const resumeOnline = store.get("online.clue.hint", false);
-  if (saved && saved.state && !saved.state.over) {
+  if (saved && !validSave(saved)) store.del("local");
+  else if (saved && saved.state.over) {
+    // the page was closed in the moment the game ended: count it, then start fresh
+    const me = saved.seats.findIndex((x) => x.kind === "human");
+    recordLocal(saved.state.turnNo, saved.state.env, saved.state.winner === me);
+    store.del("local");
+  } else if (saved) {
     myQuestions = store.get("questions", []);
-    startLocal(saved);
-    return;
+    try { startLocal(saved); return; } catch (e) { console.warn("saved game dropped", e); store.del("local"); room = null; }
   }
   setupView();
   try { if (localStorage.getItem("online.clue")) { const ok = await getOnline().resume(); if (!ok) setupView(); } } catch (e) {}
@@ -797,4 +854,8 @@ showTab(location.hash.slice(1) || "play", false);
 })();
 
 // test hook (headless checks)
-window.__clue = { get snap() { return snapNow; }, act, settings };
+window.__clue = { get snap() { return snapNow; }, act, settings, get online() { return online; } };
+
+// turning the phone: the seats across the table re-fit their name plates
+let fitT = null;
+window.addEventListener("resize", () => { clearTimeout(fitT); fitT = setTimeout(() => { if (snapNow && snapNow.pub && gameEl) renderPlayers(snapNow); }, 150); });
