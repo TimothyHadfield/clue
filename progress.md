@@ -1,7 +1,7 @@
 # Clue — progress
 
 ## START HERE
-Last updated 2026-10-20 (visual design pass). Read in this order: this file, CLAUDE.md, docs/rules-check.md, docs/ideas.md, chat.md.
+Last updated 2026-10-20 (real-table look). Read in this order: this file, CLAUDE.md, docs/rules-check.md, docs/ideas.md, chat.md.
 Live: https://timothyhadfield.github.io/clue/ · Repo: https://github.com/TimothyHadfield/clue
 
 ## Goal right now
@@ -20,6 +20,7 @@ Tim: "add risk, clue, battleship, connect four, stratego, clue, checkers, pandem
 | QA report 2026-10-20 | all items fixed and retested headless (see chat.md) |
 | Design pass 2026-10-20 | done: no sticky hover on phones, cream weapon tokens, bigger pawns, readable hand cards, sheet buttons stay on screen, board never resizes between turns (see chat.md) |
 | Sounds and effects 2026-10-20 | done: js/fx.js (shared copy of `_fx/fx.js`, never edit) + js/sfx.js (Clue's events → sounds). Settings → "Sound & effects". tests/fx.test.js |
+| Real-table look 2026-10-20 | done: wooden table (shared kit `css/table.css` + `js/table.js`, copies of `../_table`, never edit), board redrawn like the printed one (cream hallway, illustrated room floors, serif name plaques, stairs + CASE FILE envelope in the middle, door swings), glossy plastic pawns, pewter weapons, ivory dice, opponents as seats with fans of maroon card backs, your hand as a fan of real 57x89 cards, notes as a cream detective sheet. Cards are dealt face down off the envelope and turn up; shown / case-file cards turn over in 3-D. Laptop: table left, sheet right. Phone landscape: board left, rest right |
 
 ## Sounds and effects: event → sound map (js/sfx.js)
 Driven by the difference between two public snapshots, so local, computer and online moves all sound the same.
@@ -45,6 +46,7 @@ Animations off adds `html.fx-still` (all CSS animations/transitions off) and tok
 ## Standing instructions (Tim's words)
 - "add risk, clue, battleship, connect four, stratego, clue, checkers, pandemic, splendor, king of tokyo, 7 wonders, and evolution to the list of games."
 - 2026-10-20: "add opptional sounds you can add to the games that reflect what's happening in the game accurately as well as win celebrations, and other fun annimations to go along with everything. Just make sure everything is customizable in the settings so the user can play as preffered."
+- 2026-10-20: "could you also make sure that each of the games also have a look to them so that the game (either board or card layout) looks almost identical to how the board or card layout looks like in real life, so it's easy to understand if you've already played it before, and also so it feels more like you're actually playing in real life rather than you're playing it online. Even things like how youre cards or other things are laid out infront of you, make it look like they are actual cards laid out similar to how it looks like in real life. Make the decks look like actual decks. Make the board have the same design as it does in real life with the same layouts. It should look kind of like you're looking through a camera that is connected to a user's glasses that is playing in real life (not actually, but the layout and style of everything should be similar)."
 - His global rules apply: $0, no permission questions, he decides looks and wording, check at 393 px and on desktop.
 
 ## Traps
@@ -61,6 +63,9 @@ Animations off adds `html.fx-still` (all CSS animations/transitions off) and tok
 - The action bar always renders its `.acts` row (empty on others' turns). Removing it makes the board resize every turn.
 - Bump `css/style.css?v=N` in index.html after CSS changes. Never put a query string on JS (see the app.js trap).
 - fx.js is a byte-for-byte copy of `../_fx/fx.js`; Clue-only sounds go in js/sfx.js via `FX.define`. Its `.switch`/`.seg` fallbacks tie on specificity and load later, so style.css overrides them under `.fx-set`.
+- Never put an SVG `filter` (drop-shadow) on the board: headless WebKit stopped painting the page (the Notes panel never appeared). The board's shadow is drawn as offset rects inside boardSvg.
+- Card backs (`.clue-back`) are hidden by opacity and shown only during the turn animations. Don't switch to `backface-visibility`: WebKit showed the backs of every hand card.
+- table.css/table.js are byte copies of `../_table`; Clue-only looks go in style.css.
 - online.js is a copy of `_online/online.js`. Another builder is fixing seat takeover there; re-copy it when the manager says.
 
 ## Decisions
@@ -75,6 +80,8 @@ Animations off adds `html.fx-still` (all CSS animations/transitions off) and tok
 ## NOT verified
 - On Tim's real iPhone (only WebKit via phone-view).
 - Sounds were never heard by a person: headless WebKit has no Web Audio; Chrome headless counted 198 plays in one bot game. Confetti checked in Chrome (headless WebKit runs only ~2 frames/s).
+- Real-table look: deal/turn-up animations only seen in headless Chrome stills (WebKit runs ~2 fps); exact real Clue card size not confirmed (57x89 used).
+- Online test (2026-10-20): every PASS line passes, but Bob logs `TypeError ... snap.seats.map` (app.js lobby ~743) on both this branch and the live main build. Not fixed (pre-existing, outside the table-look slice).
 - Online sounds: same code path as local (snapshot diff) but not run in a two-browser test.
 - The 2016+ board changes aren't modelled.
 - UK answering-to-the-right isn't modelled.
