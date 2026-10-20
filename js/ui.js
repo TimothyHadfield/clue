@@ -1,0 +1,51 @@
+/* Shared page helpers: storage, settings, sheets, toasts, the solver worker. */
+
+// ------------------------------------------------------------------ helpers
+export const $ = (s, el = document) => el.querySelector(s);
+export const $$ = (s, el = document) => [...el.querySelectorAll(s)];
+export const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+export const store = {
+  get(k, d) { try { const v = JSON.parse(localStorage.getItem("clue." + k)); return v == null ? d : v; } catch (e) { return d; } },
+  set(k, v) { try { localStorage.setItem("clue." + k, JSON.stringify(v)); } catch (e) {} },
+  del(k) { try { localStorage.removeItem("clue." + k); } catch (e) {} },
+};
+export const settings = Object.assign({ edition: "classic", rules: "classic", level: 2, odds: true, speed: 1, players: 4, me: 0 }, store.get("settings", {}));
+export const saveSettings = () => store.set("settings", settings);
+let toastT = null;
+export function toast(msg, ms = 2200) {
+  const t = $("#toast"); t.textContent = msg; t.classList.add("on");
+  clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove("on"), ms);
+}
+export function sheet(html, onOpen) {
+  const o = $("#overlay");
+  o.innerHTML = `<div class="sheet">${html}</div>`;
+  o.classList.add("on");
+  o.onclick = (e) => { if (e.target === o && o.dataset.lock !== "1") closeSheet(); };
+  if (onOpen) onOpen(o.firstElementChild);
+  return o.firstElementChild;
+}
+export function closeSheet() { const o = $("#overlay"); o.classList.remove("on"); o.innerHTML = ""; o.dataset.lock = ""; }
+export const pct = (p) => (p >= 0.9995 ? "100%" : p <= 0.0005 ? "0%" : p < 0.01 ? "<1%" : Math.round(p * 100) + "%");
+/** red → green for "how likely is this the answer" */
+export const heat = (p) => `hsl(${Math.round(8 + 120 * Math.min(1, p))} 70% 62%)`;
+export function help(title, body) { return `<button class="q" data-help="${esc(title)}" data-body="${esc(body)}" aria-label="Why?">?</button>`; }
+document.addEventListener("click", (e) => {
+  const q = e.target.closest("[data-help]");
+  if (!q) return;
+  e.stopPropagation();
+  sheet(`<h3>${q.dataset.help}</h3><p>${q.dataset.body}</p><div class="row" style="justify-content:flex-end"><button class="btn small" data-close>OK</button></div>`, (el) => { $("[data-close]", el).onclick = closeSheet; });
+});
+
+// ------------------------------------------------------------------ solver worker
+let worker = null, wid = 0;
+const pending = new Map();
+export function askSolver(payload) {
+  if (!worker) {
+    worker = new Worker(new URL("./worker.js", import.meta.url), { type: "module" });
+    worker.onmessage = (e) => { const f = pending.get(e.data.id); if (f) { pending.delete(e.data.id); f(e.data); } };
+    worker.onerror = (e) => { console.warn("solver worker", e.message); };
+  }
+  const id = ++wid;
+  return new Promise((res) => { pending.set(id, res); worker.postMessage(Object.assign({ id }, payload)); });
+}
+
