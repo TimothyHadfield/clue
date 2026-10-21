@@ -142,8 +142,9 @@ export function boardSvg(edition) {
   // room names printed on the floor on a small plaque, and passages
   ROOMS.forEach((R, k) => {
     const name = E.rooms[k].toUpperCase();
-    const fs = Math.min(0.7, (R.lw - 1) / (name.length * 0.8));
-    const tw = name.length * fs * 0.8 + 0.6;
+    // as large as the room's widest row allows (tools/vis.mjs checks every name stays on its plaque)
+    const fs = Math.min(0.74, (R.lw - 0.7) / (name.length * 0.76));
+    const tw = Math.min(R.lw - 0.15, name.length * fs * 0.76 + 0.5);
     out.push(`<rect x="${R.lx - tw / 2}" y="${R.ly + 0.18}" width="${tw}" height="${fs + 0.42}" rx=".12" fill="#f3ead2" stroke="#2b1d12" stroke-width=".05" opacity=".94"/>`);
     out.push(`<text x="${R.lx}" y="${R.ly + 0.39 + fs * 0.8}" text-anchor="middle" font-size="${fs.toFixed(3)}" font-weight="700" letter-spacing=".03" fill="#2b1d12" font-family="Georgia, 'Times New Roman', serif">${name}</text>`);
     if (PASSAGE[k] >= 0) {
@@ -176,7 +177,8 @@ export function tokenSvg(sus) {
 }
 export function weaponPieceSvg(w) {
   // a pewter miniature lying on the floor: dark edge, metal body, a bright glint where the light hits
-  const g = (st, sw, dx = 0) => `<g transform="translate(${-0.4 + dx} ${-0.4 + dx}) scale(.0333)" fill="none" stroke="${st}" stroke-width="${sw}" stroke-linecap="round" stroke-linejoin="round">${WEAPON_ICON[w]}</g>`;
+  // drawn as large as its square (0.92 of it), so it can be told apart on a phone
+  const g = (st, sw, dx = 0) => `<g transform="translate(${-0.46 + dx} ${-0.46 + dx}) scale(.0383)" fill="none" stroke="${st}" stroke-width="${sw}" stroke-linecap="round" stroke-linejoin="round">${WEAPON_ICON[w]}</g>`;
   return `<g class="wep" data-w="${w}"><g opacity=".45">${g("#000", 4.6, 0.07)}</g>${g("#1b1e24", 4.2)}${g("#9aa2ad", 2.4)}${g("#f1f3f6", 0.8, -0.02)}</g>`;
 }
 
