@@ -43,6 +43,16 @@ Sources:
 | Wrong accusation: you're out but still show cards; a token left in a doorway moves into the room | Enforced | PB1998 | accusations, doorway |
 | Everyone accuses wrongly | The game ends with no winner | H2023 | accusations |
 
+## Edge cases checked (2026-10-20, tests/edge.test.js)
+
+| Situation | Behaviour | Source |
+|---|---|---|
+| Every exit of your room is blocked and you roll | The turn is spent, the token stays (the passage was still open before rolling) | PB1998 (tokens block hallway squares) |
+| Your token is "pulled" into the room it is already in | Not a move: no free suggestion next turn under the Clue rules | PB1998 ("moved into a room by a suggestion") |
+| Everyone else has accused wrongly | The last player keeps playing and must still accuse correctly | H2023 wording (see below) |
+| You go out on turn 1 | The computers finish the game; out players still show cards | PB1998 |
+| No rule gaps were found in this pass | | |
+
 ## Interpretations (the rules leave these open)
 
 - **Stepping from the doorway square into the room costs 1 step.** PB1998 says the door "is not counted as a square", and that's how we read it. It reproduces the known "Peacock is 10 from the Billiard Room" fact.

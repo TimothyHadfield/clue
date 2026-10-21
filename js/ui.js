@@ -48,7 +48,14 @@ document.addEventListener("click", (e) => {
   const q = e.target.closest("[data-help]");
   if (!q) return;
   e.stopPropagation();
-  sheet(`<h3>${q.dataset.help}</h3><p>${q.dataset.body}</p><div class="row" style="justify-content:flex-end"><button class="btn small" data-close>OK</button></div>`, (el) => { $("[data-close]", el).onclick = closeSheet; });
+  // a "?" inside another sheet (e.g. Suggest) opens on top of it, and OK goes back to it with your picks kept
+  const o = $("#overlay");
+  const under = sheetOpen() ? o.firstElementChild : null, lock = o.dataset.lock;
+  const back = () => { o.innerHTML = ""; o.appendChild(under); o.dataset.lock = lock; o.onclick = (ev) => { if (ev.target === o && o.dataset.lock !== "1") closeSheet(); }; };
+  sheet(`<h3>${q.dataset.help}</h3><p>${q.dataset.body}</p><div class="row" style="justify-content:flex-end"><button class="btn small" data-close>OK</button></div>`, (el) => {
+    $("[data-close]", el).onclick = under ? back : closeSheet;
+    if (under) o.onclick = (ev) => { if (ev.target === o) back(); };
+  });
 });
 
 // ------------------------------------------------------------------ solver worker
