@@ -89,7 +89,8 @@ for (const [w, h, phone, tag] of [[320, 568, true, "se"], [393, 659, true, "phon
 await check("rotate", async (use) => {
   const p = use(await open({ w: 659, h: 393, local: saved(6) }));
   await p.goto(base + "#play"); await inGame(p); await sleep(800);
-  await p.setViewportSize({ width: 393, height: 659 }); await sleep(1500);
+  await p.setViewportSize({ width: 393, height: 659 });
+  await p.waitForFunction(() => [...document.querySelectorAll("#players .pl .nm")].every((x) => x.textContent.length <= 3), null, { timeout: 5000 }).catch(() => {});
   const L = await layout(p);
   const chips = await p.evaluate(() => [...document.querySelectorAll("#players .pl .nm")].map((x) => x.textContent));
   await shot(p, "rotate.png");

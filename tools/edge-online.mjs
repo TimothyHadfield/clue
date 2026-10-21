@@ -63,7 +63,7 @@ try {
   // a late joiner with a new name
   if (!(await B.$("#oName"))) await B.click("#goOnline");
   await B.fill("#oName", "Zed"); await B.fill("#oCode", code); await B.click("#oJoin");
-  await B.waitForFunction(() => document.querySelector("#toast.on"), null, { timeout: 30000 });
+  await B.waitForFunction(() => document.querySelector("#toast.on") && !/computer/.test(document.querySelector("#toast").textContent), null, { timeout: 30000 });
   const t2 = await B.evaluate(() => document.querySelector("#toast").textContent);
   const kept = await B.evaluate(() => document.querySelector("#oCode") && document.querySelector("#oCode").value);
   res("late-joiner", /already started/i.test(t2) && kept === code, `toast "${t2}", code kept "${kept}"`);
