@@ -6,7 +6,8 @@ import { createOnline } from "./online.js";
 import { EDITIONS, RULESETS, SUSPECT_COLORS, cardName, shortName } from "./cards.js";
 import { cardSvg, cardBackHtml, weaponSvg, roomSvg, pawnSvg, dieHtml, logoSvg } from "./art.js";
 import { boardSvg, roomHitPaths, placeXY, tokenSvg, weaponPieceSvg, walkPath, ROOMS } from "./boardview.js";
-import { reach, PASSAGE, idx, rc } from "./board.js";
+import { reach, PASSAGE, idx, rc, DOOR_LIST } from "./board.js";
+import { makeZoom } from "./zoom.js";
 import { factsFor, handSizes } from "./knowledge.js";
 import { recordsFor, LEVELS } from "./ai.js";
 import { initNotepad, refreshNotepad } from "./notepad.js";
@@ -23,6 +24,8 @@ stillPage(); FX.onChange(stillPage);
 const E = () => EDITIONS[settings.edition] || EDITIONS.classic;
 const cname = (c) => cardName(settings.edition, c);
 const sname = (c) => shortName(settings.edition, c);
+let zoom = null, zoomKey = "", zoomTurn = -1;   // the board's zoom (see lookCloser / autoZoom)
+const SMALL_SQ = 22;   // px per square below which the board zooms to your move / to a tapped room
 
 // ------------------------------------------------------------------ tabs (Back goes where you were)
 const TABS = ["play", "table", "learn", "settings"];
@@ -292,6 +295,14 @@ function buildGame(snap) {
   $(".toks", svg).innerHTML = [0, 1, 2, 3, 4, 5].map(tokenSvg).join("");
   $(".weps", svg).innerHTML = [0, 1, 2, 3, 4, 5].map(weaponPieceSvg).join("");
   $("#closeNotes").onclick = () => { gameEl.classList.remove("notesopen"); popLayer(); };
+  // zoom: the whole board shows; your move zooms to where you can go on a phone, pinch / drag / tap a room to look closer
+  const zb = document.createElement("button");
+  zb.className = "zoomout"; zb.id = "zoomOut"; zb.hidden = true; zb.setAttribute("aria-label", "Whole board");
+  zb.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>`;
+  $("#bw", gameEl).appendChild(zb);
+  zoom = makeZoom(svg, { onChange: (z) => (zb.hidden = !z.zoomed), still: () => !FX.settings.animations });
+  zb.onclick = () => zoom.reset();
+  zoomKey = ""; zoomTurn = -1;
   svg.addEventListener("click", onBoardClick);
   placePieces(pub, null, true);
 }
@@ -366,7 +377,8 @@ function renderPlayers(snap) {
   const pub = snap.pub;
   const others = pub.chars.map((_, i) => i).filter((i) => i !== snap.mySeat);
   // narrow screens with many players: short labels that stay different (Pe / Pl)
-  const room4 = (Math.min(window.innerWidth, 900) - 64) / Math.max(1, others.length);
+  const rowW = ($("#players") && $("#players").clientWidth) || Math.min(window.innerWidth, 900);
+  const room4 = (Math.min(rowW, 900) - 64) / Math.max(1, others.length);
   const keep = room4 < 72 ? 2 : room4 < 96 ? 3 : 99;
   // each seat: the cards they hold (backs, in a small fan) and a name plate in their colour
   const seat = (i) => {
@@ -529,23 +541,61 @@ async function act(a) {
 // board clicks: walk to a lit square or into a lit room
 function onBoardClick(e) {
   const snap = snapNow;
-  if (!snap || myTurnPhase(snap) !== "move") return;
+  if (!snap) return;
+  if (myTurnPhase(snap) !== "move") { lookCloser(e); return; }
   const t = e.target.closest("[data-sq],[data-room]");
   if (!t) { FX.play("error"); return; }   // a square you can't reach this turn
   if (t.dataset.sq != null) act({ type: "move", sq: +t.dataset.sq });
   else if (t.classList.contains("can")) act({ type: "move", room: +t.dataset.room });
   else FX.play("error");
 }
+// ------------------------------------------------------------------ zoom (js/zoom.js)
+/** Not your move: tap a room (or anywhere) to look closer on a small screen; tap again for the whole board. */
+function lookCloser(e) {
+  if (!zoom) return;
+  if (zoom.zoomed) { zoom.reset(); return; }
+  if (zoom.unitPx() >= SMALL_SQ) return;
+  const t = e.target.closest("[data-room]");
+  if (t) { const R = ROOMS[+t.dataset.room]; zoom.to({ x: R.c0 - 0.8, y: R.r0 - 0.8, w: R.c1 - R.c0 + 2.6, h: R.r1 - R.r0 + 2.6 }); return; }
+  const p = zoom.pt(e.clientX, e.clientY);
+  zoom.to({ x: p.x - 5, y: p.y - 5, w: 10, h: 10 });
+}
+/** The part of the board your move can reach: your pawn, the lit squares and the doors of lit rooms. */
+function reachArea(pub, m) {
+  const pts = [];
+  const mine = pub.pos[pub.chars[pub.turn]];
+  if (mine.sq != null) { const [r, c] = rc(mine.sq); pts.push([c, r]); }
+  else { const R = ROOMS[mine.room]; pts.push([R.cx - 1, R.cy - 1], [R.cx + 1, R.cy + 1]); }
+  for (const sq of m.squares) { const [r, c] = rc(sq); pts.push([c, r]); }
+  for (const x of m.rooms) for (const d of DOOR_LIST) if (d.room === x.room) { const [r, c] = rc(d.roomCell); pts.push([c, r]); }
+  const xs = pts.map((p) => p[0]), ys = pts.map((p) => p[1]);
+  const x0 = Math.min(...xs) - 1.2, y0 = Math.min(...ys) - 1.2;
+  return { x: x0, y: y0, w: Math.max(...xs) + 2.2 - x0, h: Math.max(...ys) + 2.2 - y0 };
+}
+function autoZoom(snap, m) {
+  if (!zoom) return;
+  const pub = snap.pub;
+  // your turn begins: show the whole board again
+  if (snap.myTurn && pub.turnNo !== zoomTurn) { zoomTurn = pub.turnNo; if (zoom.zoomed && pub.phase === "start") zoom.reset(); }
+  const key = m ? "m" + pub.turnNo + ":" + (pub.roll ? pub.roll.total : "") : "";
+  if (key === zoomKey) return;
+  zoomKey = key;
+  if (m && (m.squares.length || m.rooms.length) && zoom.unitPx() < SMALL_SQ) zoom.to(reachArea(pub, m), true);
+  else if (!m && zoom.auto) zoom.reset();
+}
 function renderHighlights(snap) {
   const svg = $("svg.board", gameEl), pub = snap.pub;
   const L = $(".reachL", svg);
   $$(".room-hit", svg).forEach((h) => h.classList.remove("can"));
+  let m = null;
   if (myTurnPhase(snap) !== "move") { L.innerHTML = ""; }
   else {
-    const m = movesFor(pub);
-    L.innerHTML = m.squares.map((sq) => { const [r, c] = rc(sq); return `<rect class="reach" data-sq="${sq}" x="${c + .06}" y="${r + .06}" width=".88" height=".88" rx=".14"/>`; }).join("");
+    m = movesFor(pub);
+    // the whole square takes the tap (the lit tile is drawn a little smaller)
+    L.innerHTML = m.squares.map((sq) => { const [r, c] = rc(sq); return `<rect data-sq="${sq}" x="${c}" y="${r}" width="1" height="1" fill="transparent" style="cursor:pointer"/><rect class="reach" data-sq="${sq}" x="${c + .06}" y="${r + .06}" width=".88" height=".88" rx=".14"/>`; }).join("");
     for (const x of m.rooms) $(`.room-hit[data-room="${x.room}"]`, svg).classList.add("can");
   }
+  autoZoom(snap, m);
   // case-file odds for each room, written under the room name
   $$(".roomodds", svg).forEach((x) => x.remove());
   if (settings.odds && notes && notes.prob) {
@@ -553,8 +603,8 @@ function renderHighlights(snap) {
     ROOMS.forEach((R, k) => {
       const p = notes.prob[12 + k][n];
       const t = document.createElementNS("http://www.w3.org/2000/svg", "text");
-      t.setAttribute("class", "roomodds"); t.setAttribute("x", R.cx); t.setAttribute("y", R.r1 + 0.75);
-      t.setAttribute("text-anchor", "middle"); t.setAttribute("font-size", ".62"); t.setAttribute("font-weight", "800");
+      t.setAttribute("class", "roomodds"); t.setAttribute("x", R.cx); t.setAttribute("y", R.r1 + 0.8);
+      t.setAttribute("text-anchor", "middle"); t.setAttribute("font-size", ".74"); t.setAttribute("font-weight", "800");
       t.setAttribute("fill", p === 0 ? "#6b7287" : heat(p)); t.textContent = p === 0 ? "✗" : pct(p);
       svg.insertBefore(t, $(".hits", svg));
     });

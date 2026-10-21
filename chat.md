@@ -19,6 +19,12 @@
 - **Verified:** `npm test` 21/21. A headless WebKit capture of 17 states at 393 px and 1280 px, before and after (scratchpad design/clue/), showed no overflow, no page scroll and no console errors. The board measured 361 px on phone in every game state, including others' turns.
 - **Open:** the board is about 4% smaller on phone because the hand cards are bigger.
 
+## 2026-10-21: visibility pass (builder agent)
+- **Asked:** Tim: "the cards or board layout is too small to easily see what's going on ... Consider parts of the board that are dense in what's happening and if the user can reasonably see it." (full quote in progress.md)
+- **Built:** board takes all the space it can on every size (seats tucked behind plates, hand sized to the screen height, landscape tabs as a left rail, laptop hand moved under the notes). js/zoom.js: auto-zoom to your move on phones, tap a room to look closer, pinch/drag/wheel, whole-board button. Bigger weapons, room names, odds; full-square tap targets; 320 px notes fit all columns.
+- **Verified:** `npm test` 35/35, `node tools/edge.mjs` 24/24, new `node tools/vis.mjs` 25/25 in WebKit and Chrome (it failed all 25 on the old build). One read-only reviewer pass on before/after shots (scratchpad vis/clue/); its fixes applied.
+- **Open:** see NOT verified (real pinch, notch, still-small items).
+
 ## 2026-10-20: edge pass, weird situations (builder agent)
 - **Asked:** Tim: "Could you focus on making each game perfect especially in scenarios that the game doesn't expect or are a little weird." Plus the known `snap.seats.map` lobby error.
 - **Built:** 47 scenarios listed (rules, odd people, odd taps, odd devices, odd screens) and tested; 12 failed and were fixed: peer actions must be whole numbers; computers fall back to a safe legal move; no crash while joining; duplicate online names get the suspect added; emoji-safe short labels; a player whose seat was handed over is told; the result sheet no longer reopens from Settings; Back on the online form returns to setup; "?" inside Suggest returns to it with picks kept; chips re-fit on rotate; a win in the last second before closing is counted; a corrupt save is dropped; two tabs no longer fight; boxed in says "Blocked in — no move".

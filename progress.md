@@ -1,7 +1,7 @@
 # Clue — progress
 
 ## START HERE
-Last updated 2026-10-20 (edge pass: weird situations). Read in this order: this file, CLAUDE.md, docs/rules-check.md, docs/ideas.md, chat.md.
+Last updated 2026-10-21 (visibility pass: bigger board, zoom). Read in this order: this file, CLAUDE.md, docs/rules-check.md, docs/ideas.md, chat.md.
 Live: https://timothyhadfield.github.io/clue/ · Repo: https://github.com/TimothyHadfield/clue
 
 ## Goal right now
@@ -21,6 +21,7 @@ Tim: "add risk, clue, battleship, connect four, stratego, clue, checkers, pandem
 | Design pass 2026-10-20 | done: no sticky hover on phones, cream weapon tokens, bigger pawns, readable hand cards, sheet buttons stay on screen, board never resizes between turns (see chat.md) |
 | Sounds and effects 2026-10-20 | done: js/fx.js (shared copy of `_fx/fx.js`, never edit) + js/sfx.js (Clue's events → sounds). Settings → "Sound & effects". tests/fx.test.js |
 | Real-table look 2026-10-20 | done: wooden table (shared kit `css/table.css` + `js/table.js`, copies of `../_table`, never edit), board redrawn like the printed one (cream hallway, illustrated room floors, serif name plaques, stairs + CASE FILE envelope in the middle, door swings), glossy plastic pawns, pewter weapons, ivory dice, opponents as seats with fans of maroon card backs, your hand as a fan of real 57x89 cards, notes as a cream detective sheet. Cards are dealt face down off the envelope and turn up; shown / case-file cards turn over in 3-D. Laptop: table left, sheet right. Phone landscape: board left, rest right |
+| Visibility pass 2026-10-21 | done: board as big as the screen allows (phone 334→373 px wide, 320 px phone 248→300, landscape 308→363 with the tabs as a left rail, laptop 545→656 with the hand moved under the sheet). Zoom (js/zoom.js, SVG viewBox so taps stay exact): your move auto-zooms to the reachable area when squares are under 22 px; not your move, tap a room to look closer, tap again or the corner button for the whole board; pinch, drag, mouse wheel. Bigger weapons, room names, room odds. Check: `node tools/vis.mjs <url> [--engine chrome]` (25 screens) |
 | Edge pass 2026-10-20 | done: 47 weird situations listed and tested, 12 failed, all fixed (table below). Checks: `tests/edge.test.js` (engine), `node tools/edge.mjs <url>` (24 browser checks), `node tools/edge-online.mjs <url>` (3 browsers online) |
 
 ## Edge pass (2026-10-20): weird situations
@@ -59,6 +60,7 @@ Animations off adds `html.fx-still` (all CSS animations/transitions off) and tok
 - 2026-10-20: "add opptional sounds you can add to the games that reflect what's happening in the game accurately as well as win celebrations, and other fun annimations to go along with everything. Just make sure everything is customizable in the settings so the user can play as preffered."
 - 2026-10-20: "could you also make sure that each of the games also have a look to them so that the game (either board or card layout) looks almost identical to how the board or card layout looks like in real life, so it's easy to understand if you've already played it before, and also so it feels more like you're actually playing in real life rather than you're playing it online. Even things like how youre cards or other things are laid out infront of you, make it look like they are actual cards laid out similar to how it looks like in real life. Make the decks look like actual decks. Make the board have the same design as it does in real life with the same layouts. It should look kind of like you're looking through a camera that is connected to a user's glasses that is playing in real life (not actually, but the layout and style of everything should be similar)."
 - 2026-10-20: "I've noticed the games often have good user interfaces but could be improved especially when a scenario happens that the game might've not really thought about or whatnot. Could you focus on making each game perfect especially in scenarios that the game doesn't expect or are a little weird."
+- 2026-10-21: "for a lot of the games the cards or board layout is too small to easily see what's going on. Some games just need small design imporvements like filling the screen with the board view and fitting the cards and other things in the empty space, some have severe errors like TTR. Fix this so the view of what's happening and where everything is is very clear. Consider parts of the board that are dense in what's happening and if the user can reasonably see it."
 - His global rules apply: $0, no permission questions, he decides looks and wording, check at 393 px and on desktop.
 
 ## Traps
@@ -83,6 +85,9 @@ Animations off adds `html.fx-still` (all CSS animations/transitions off) and tok
 - A saved game is checked by `validSave` before it is resumed; add any new required state field there too.
 - `game.bot` validates the computer's move against the rules and falls back to `safeAction`; it warns "computer fallback" in the console when that happens.
 - WebKit logs "ResizeObserver loop completed with undelivered notifications" as a page error when the hand fan relayouts (shared js/table.js `fan()` observes the element whose height it sets). Harmless; tools/edge.mjs ignores it. Fix belongs in `_table`.
+- Board zoom changes the SVG `viewBox` (js/zoom.js); never zoom with CSS transforms, taps and the token walk rely on SVG units. The svg has `touch-action: none` (pinch/drag are ours). A drag or pinch swallows the following click.
+- Headless WebKit runs requestAnimationFrame at a few frames a second, so zoom animations there take seconds: tests wait for `#zoomOut` hidden/shown, never a fixed sleep.
+- A finished game is never resumed from storage; tools/vis.mjs reaches the end screen by accusing correctly through `window.__clue.act`.
 - Online test tools run from `http://localhost:<port>/` (Firebase works there); `127.0.0.1` is fine for local-only checks.
 
 ## Decisions
@@ -92,6 +97,7 @@ Animations off adds `html.fx-still` (all CSS animations/transitions off) and tok
 - Hard accuses at 80% or more (measured better than 99.9%).
 - The classic board is used for every edition's names.
 - Easy now knows one trick: if nobody could answer its own question, the cards it doesn't hold are the answer. Six Easy computers went from 379 to 96 turns. Medium beats 3 Easy 74.5% of the time (was 100%).
+- 2026-10-21 visibility: auto-zoom only below 22 px per square (phones, not laptops); zoom-out button bottom-left of the board, icon only; laptop hand sits under the notes (78 px cards), notes log capped at 17%.
 - On narrow phones with 5 or 6 players, the player chips show 2 letters ("Me", "Mu") and hide the card count (it's in the chip's tooltip).
 
 ## NOT verified
@@ -100,6 +106,7 @@ Animations off adds `html.fx-still` (all CSS animations/transitions off) and tok
 - Real-table look: deal/turn-up animations only seen in headless Chrome stills (WebKit runs ~2 fps); exact real Clue card size not confirmed (57x89 used).
 - Edge pass (2026-10-20), reasoned only: a tab left in the background for 10 minutes (timers throttle, state is saved every move, so it resumes); a slow/dropped network online (handled inside shared online.js); a spectator with no seat; an online player who stays online but never acts (AFK) — nobody can hand that seat over, as at a real table. A phone returning from the background after the host gave its seat away can't reclaim it (online.js design); it now gets a message.
 - Online sounds: same code path as local (snapshot diff) but not run in a two-browser test.
+- Visibility pass (2026-10-21): pinch and drag only reasoned + synthetic; never done with real fingers. iPhone landscape notch padding (`env(safe-area-inset-*)`) is 0 headless, so the rail next to the notch is unchecked. Still small: at 320 px the seat chips read "M." / "W."; a 6-roll's auto-zoom has 17–19 px squares (it fits every lit square on screen; pinch for more); laptop die beside "You" is small; confetti covers the end sheet on phones.
 - The 2016+ board changes aren't modelled.
 - UK answering-to-the-right isn't modelled.
 - QA fixes checked by reading the code only, not clicked through: the notepad refusing "nobody showed" on a card you hold, room chips clearing after a contradiction, triple-tap Suggest logging once, emoji/long names in notepad headers.
