@@ -282,8 +282,9 @@ function validSave(sv) {
       && Number.isInteger(st.turn) && st.turn >= 0 && st.turn < n && !!st.opts && typeof st.opts === "object";
   } catch (e) { return false; }
 }
-/** Count a finished (or quit) local game once in your win/loss record and in My stats. */
+/** Count a finished (or quit) local game once in your win/loss record and in My stats. The guided game never counts. */
 function recordLocal(turnNo, env, won, meta, st) {
+  if (meta && meta.tutorial) return;
   const k = "counted:" + (meta && meta.id ? meta.id : turnNo + ":" + env.join(","));
   if (store.get(k, false)) return;
   const rec = store.get("record", { w: 0, l: 0 });

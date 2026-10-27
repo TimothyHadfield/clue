@@ -1,7 +1,7 @@
 # Clue — progress
 
 ## START HERE
-Last updated 2026-10-27 (improve pass: kits, Undo, reveal, replay, achievements, Daily, stronger Hard). Read in this order: this file, CLAUDE.md, docs/rules-check.md, docs/ideas.md, chat.md.
+Last updated 2026-10-27 (follow-up: the guided game never counts in My stats or the W/L record, even when quit (`recordLocal` returns for `meta.tutorial`); quitting a normal game vs computers was already a loss; `tests/quit.browser.mjs` (WebKit 393, in `npm test`, seen failing on the old build: 2 games); build 11. Before that, improve pass: kits, Undo, reveal, replay, achievements, Daily, stronger Hard). Read in this order: this file, CLAUDE.md, docs/rules-check.md, docs/ideas.md, chat.md.
 Live: https://timothyhadfield.github.io/clue/ · Repo: https://github.com/TimothyHadfield/clue
 
 ## Goal right now
