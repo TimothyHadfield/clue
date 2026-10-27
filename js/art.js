@@ -65,6 +65,23 @@ export function pawnSvg(sus, size = 28) {
 // floor colour of each room on the board; the room cards use the same colour for their picture
 export const ROOM_FLOOR = ["#d9d6cc", "#b27a46", "#c47a52", "#8b5a35", "#6e4c33", "#7b2f2f", "#6d3b55", "#cfc8b8", "#5e3d26"];
 const CAT_INK = ["#7d2433", "#2c4a68", "#3f5a2a"];
+// each suspect card's silhouette gets its own prop so the six read apart at a glance (our own drawings, no faces)
+const INK = `fill="#1d1a17" stroke="#1d1a17" stroke-width="1.6" stroke-linejoin="round"`;
+const LINE = `fill="none" stroke="#1d1a17" stroke-width="2.2" stroke-linecap="round"`;
+const SUSPECT_PROP = [
+  // a cloche hat with a long feather
+  `<path d="M33 69q0-17 17-17t17 17q-17-5-34 0z" ${INK}/><path d="M30 70q20-4 40 0" ${LINE}/><path d="M63 57q11-8 15-23q-9 7-15 21z" fill="#f6efdc" stroke="#1d1a17" stroke-width="1.4"/><path d="M64 55q6-9 12-18" fill="none" stroke="#1d1a17" stroke-width="1"/>`,
+  // a bowler hat and a moustache
+  `<path d="M37 64q0-14 13-14t13 14z" ${INK}/><path d="M31 64.5h38" ${LINE}/><path d="M42 78q4-4 8-1q4-3 8 1q-4 3-8 1q-4 2-8-1z" ${INK}/>`,
+  // a frilled cap and a string of pearls
+  `<path d="M35 64q15-11 30 0q-3-6-6-6q-3-3-9-3t-9 3q-3 0-6 6z" fill="#d9d1bf" stroke="#1d1a17" stroke-width="1.6"/><path d="M36 63q14-7 28 0" fill="none" stroke="#1d1a17" stroke-width="1" stroke-dasharray="2 2"/>${[38, 42, 46, 50, 54, 58, 62].map((x, i) => `<circle cx="${x}" cy="${(88 + (3 - Math.abs(i - 3)) * 1.3).toFixed(1)}" r="2" fill="#f6efdc" stroke="#1d1a17" stroke-width=".9"/>`).join("")}`,
+  // a top hat and a bow tie
+  `<path d="M40 60V39h20v21z" ${INK}/><path d="M40 55h20" stroke="#f6efdc" stroke-width="2"/><path d="M33 60.5h34" ${LINE}/><path d="M41 86l9 5-9 5zM59 86l-9 5 9 5z" ${INK}/>`,
+  // hair up in a bun, with a fan
+  `<circle cx="50" cy="53" r="6.5" ${INK}/><path d="M35 70q0-13 15-14t15 14q-6-7-15-7t-15 7z" ${INK}/><path d="M64 112l14-22M64 112l17-17M64 112l18-11M64 112l10-25" stroke="#1d1a17" stroke-width="1.4"/><path d="M74 87q9 2 8 14l-18 11z" fill="#f6efdc" fill-opacity=".85" stroke="#1d1a17" stroke-width="1.4"/>`,
+  // round spectacles and a scholar's scarf
+  `<circle cx="44" cy="72" r="4.6" fill="#f6efdc" fill-opacity=".35" stroke="#1d1a17" stroke-width="2"/><circle cx="56" cy="72" r="4.6" fill="#f6efdc" fill-opacity=".35" stroke="#1d1a17" stroke-width="2"/><path d="M48.6 72h2.8" stroke="#1d1a17" stroke-width="2"/><path d="M38 86q12 7 24 0l-2 6q-10 5-20 0z" ${INK}/><path d="M55 90l4 20h-6z" ${INK}/>`,
+];
 const CAT_WORD = ["SUSPECT", "WEAPON", "ROOM"];
 
 /** Card face, 100 x 156 viewBox (a real card's 57 x 89 shape): category word, a framed picture, the name below. */
@@ -78,7 +95,7 @@ export function cardSvg(ed, c) {
     art = `<ellipse cx="50" cy="69" rx="30" ry="34" fill="#f6efdc" opacity=".22"/>
       <path d="M20 116c0-20 12-29 19-32a16 16 0 1 1 22 0c7 3 19 12 19 32z" fill="${col}" stroke="#1d1a17" stroke-width="2.2"/>
       <path d="M40 84l10 12 10-12" fill="none" stroke="#1d1a17" stroke-width="2"/>
-`;
+      ${SUSPECT_PROP[c]}`;
   } else if (cat === 1) {
     panel = `<rect x="7" y="22" width="86" height="94" rx="3" fill="#2f3b4c"/><ellipse cx="50" cy="50" rx="40" ry="26" fill="#fff" opacity=".1"/>`;
     art = `<g transform="translate(22 41) scale(2.35)" fill="none" stroke-linecap="round" stroke-linejoin="round"><g stroke="#111722" stroke-width="3.4">${WEAPON_ICON[c - 6]}</g><g stroke="#d4d9e0" stroke-width="1.6">${WEAPON_ICON[c - 6]}</g></g>`;
