@@ -1,0 +1,10 @@
+{
+  "repo": "clue",
+  "ready": "!!(window.__clue && document.querySelector('#go, svg.board'))",
+  "play": [
+    "(async () => { const w = ms => new Promise(r => setTimeout(r, ms)); try { COACH.closeOffer(); } catch (e) {} window.__clue.settings.speed = 2; document.querySelector('#go').click(); for (let i = 0; i < 200 && !(window.__clue.snap && window.__clue.snap.myTurn); i++) await w(100); window.__t0 = window.__clue.snap.pub.turnNo; await window.__clue.act({ type: 'roll' }); await w(400); const { movesFor } = await import('./js/game.js'); const pub = window.__clue.snap.pub; if (pub.phase === 'move') { const m = movesFor(pub); await window.__clue.act(m.rooms.length ? { type: 'move', room: m.rooms[0].room } : { type: 'move', sq: m.squares[0] }); await w(400); } if (window.__clue.snap.myTurn && window.__clue.snap.pub.phase !== 'disprove') await window.__clue.act({ type: 'end' }); })()"
+  ],
+  "played": "(() => { const s = window.__clue && window.__clue.snap; return !!(s && s.pub && window.__t0 && s.pub.turnNo > window.__t0 && (s.myTurn || s.pub.turnNo > window.__t0 + 2)); })()",
+  "safe": "document.querySelector('nav.tabs [data-tab=settings]').click(); document.querySelector('#sQuit').click(); document.querySelector('#qYes').click();",
+  "debug": "JSON.stringify((() => { const s = window.__clue && window.__clue.snap; return s && s.pub ? { t0: window.__t0, turnNo: s.pub.turnNo, phase: s.pub.phase, myTurn: s.myTurn } : null; })())"
+}
