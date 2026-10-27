@@ -200,7 +200,7 @@ function startTutorial() {
 let rulesByBack = false;
 function openRules(open) {
   if (!COACH) return;
-  closeSheet();
+  closeSheet(true);   // an open sheet's Back entry is reused for the rules (no history.back that would land on them)
   pushLayer("rules");
   COACH.rules(Object.assign(rulesSheet(E()), open ? { open } : {}, { onClose: () => { if (!rulesByBack) popLayer(); rulesByBack = false; } }));
 }
@@ -224,6 +224,9 @@ function suspectsFor(n, me) {
   return s.sort((a, b) => a - b);
 }
 function startLocal(resume, how = {}) {
+  if (rp) { stopPlay(); rp = null; }
+  if (room && room.close) room.close();
+  room = null; snapNow = null; prevPub = null; gameEl = null;
   let seats, options, state = null, meta = null, rng = null, dealRng = null;
   if (resume && resume.state) {
     seats = resume.seats; state = resume.state; options = state.opts; meta = resume.meta || null;
@@ -281,7 +284,7 @@ function validSave(sv) {
 }
 /** Count a finished (or quit) local game once in your win/loss record and in My stats. */
 function recordLocal(turnNo, env, won, meta, st) {
-  const k = "counted:" + turnNo + ":" + env.join(",");
+  const k = "counted:" + (meta && meta.id ? meta.id : turnNo + ":" + env.join(","));
   if (store.get(k, false)) return;
   const rec = store.get("record", { w: 0, l: 0 });
   if (won) rec.w++; else rec.l++;
@@ -464,7 +467,7 @@ async function renderGame(snap, prev, fresh) {
       const t = pub.winner >= 0 ? (pub.winner === snap.mySeat ? "You solved it!" : esc(seatName(pub, pub.winner, snap)) + " solved it") : "Nobody solved it";
       try { await revealScene({ cards: pub.reveal.env, edition: settings.edition, title: t, FX }); } catch (e) {}
     }
-    if (snapNow === snap) gameOver(snap);
+    if (snapNow && snapNow.pub && snapNow.pub.over && snapNow.mode === snap.mode) gameOver(snapNow);
   }, 900 / settings.speed);
 }
 
@@ -556,6 +559,7 @@ function renderLog(pub) {
 // ------------------------------------------------------------------ the action bar
 function myTurnPhase(snap) { return snap.myTurn ? snap.pub.phase : null; }
 function renderBar(snap) {
+  if (rp && gameEl && gameEl.classList.contains("replaying")) { drawReplay(); return; }
   const pub = snap.pub, bar = $("#bar");
   const me = snap.mySeat;
   const ph = myTurnPhase(snap);
@@ -811,8 +815,8 @@ function suggestSheet(snap) {
   $("#sGo", el).onclick = () => {
     if (sent) return; sent = true;
     const b = bitsOf(pickS, pickW);
-    if (best && b != null) { myQuestions.push({ got: b, best: best.bits }); store.set("questions", myQuestions); }
     act({ type: "suggest", suspect: pickS, weapon: pickW });
+    if (best && b != null) { myQuestions.push({ got: b, best: best.bits }); store.set("questions", myQuestions); }
   };
 }
 function accuseSheet(snap) {
@@ -893,6 +897,7 @@ function frameText(f, st) {
 }
 function startReplay() {
   if (!canReplay() || !gameEl) return;
+  stopPlay();
   const st = room.state;
   const first = { pos: game.setup(st.n, st.opts, () => 0.5, []).pos, wr: (room.meta.startWr || st.weaponRoom), last: null };
   rp = { frames: [first].concat(room.meta.frames), i: 0, timer: null, st };
@@ -1120,6 +1125,7 @@ showTab(location.hash.slice(1) || "play", false);
   else if (saved && saved.state.over) {
     // the page was closed in the moment the game ended: count it, then start fresh
     const me = saved.seats.findIndex((x) => x.kind === "human");
+    myQuestions = store.get("questions", []);
     recordLocal(saved.state.turnNo, saved.state.env, saved.state.winner === me, saved.meta || {}, saved.state);
     store.del("local");
   } else if (saved) {
