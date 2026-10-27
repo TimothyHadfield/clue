@@ -2,7 +2,7 @@
 import "./fx.js";
 import { eventsFor, perform, defineSounds, DEAL_AT, DEAL_GAP } from "./sfx.js";
 import { game, movesFor, canPassage, canSuggestHere } from "./game.js";
-import { createOnline } from "./online.js";
+import { createOnline } from "./online.js?v=a3d0418b";
 import { EDITIONS, RULESETS, SUSPECT_COLORS, cardName, shortName } from "./cards.js";
 import { cardSvg, cardBackHtml, weaponSvg, roomSvg, pawnSvg, dieHtml, logoSvg } from "./art.js";
 import { boardSvg, roomHitPaths, placeXY, tokenSvg, weaponPieceSvg, walkPath, ROOMS } from "./boardview.js";
