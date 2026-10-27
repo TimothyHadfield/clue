@@ -116,6 +116,11 @@ select { -webkit-appearance: none; appearance: none; padding-right: 30px; color-
 .who button.on { border-color: var(--accent); background: rgba(110,168,254,.12); color: var(--text); }
 .who button.off { opacity: .35; }
 .record { display: flex; gap: 14px; justify-content: center; font-size: 13px; color: var(--muted); }
+.row.two > .btn { flex: 1; }
+.me-btn { display: inline-flex; align-items: center; gap: 8px; min-height: 40px; padding: 4px 14px 4px 6px; border-radius: 999px; background: var(--card); border: 1px solid var(--line);
+  color: var(--text); font: inherit; font-size: 13.5px; font-weight: 650; cursor: pointer; }
+.me-btn svg { flex: none; border-radius: 50%; }
+.me-btn .wl { color: var(--muted); font-weight: 500; }
 
 /* ------------------------------------------------------------- game layout: a real table seen from your seat
    (css/table.css is the shared table kit, copied unchanged; .tbl-surface.tbl-wood-dark is the wooden table top) */
@@ -412,3 +417,30 @@ select { -webkit-appearance: none; appearance: none; padding-right: 30px; color-
   box-shadow: inset 0 0 0 2px #f3ead6, 0 3px 8px rgba(0,0,0,.55); }
 /* Animations off (Settings): everything on the page is still */
 html.fx-still *, html.fx-still *::before, html.fx-still *::after { animation: none !important; transition: none !important; }
+
+/* ---- case-file reveal at the end of a game (js/reveal.js) */
+.reveal { position: fixed; inset: 0; z-index: 70; display: flex; align-items: center; justify-content: center; cursor: pointer;
+  background: radial-gradient(ellipse at 50% 42%, rgba(60,44,22,.55), rgba(4,5,9,.92) 70%); animation: rvIn calc(.3s * var(--sp)) ease-out both; }
+.reveal.out { opacity: 0; transition: opacity .25s; }
+.rv-stage { display: flex; flex-direction: column; align-items: center; gap: 14px; padding: 16px; width: 100%; max-width: 640px; }
+.rv-title { font: 800 clamp(22px, 6vw, 34px)/1.15 Georgia, "Times New Roman", serif; color: #f6e7c4; text-align: center; text-shadow: 0 2px 10px rgba(0,0,0,.6);
+  animation: rvUp calc(.5s * var(--sp)) calc(1.9s * var(--sp)) both; }
+.rv-cards { display: flex; gap: clamp(8px, 3vw, 18px); justify-content: center; position: relative; z-index: 2; }
+.rv-card { width: min(28vw, 150px); aspect-ratio: 100 / 156; border-radius: 8px; box-shadow: 0 14px 30px rgba(0,0,0,.6), 0 0 0 1px rgba(0,0,0,.4);
+  animation: rvCard calc(.62s * var(--sp)) calc((.62s + var(--i) * .38s) * var(--sp)) cubic-bezier(.25,.8,.3,1.15) both; }
+.rv-card svg { width: 100%; height: 100%; display: block; border-radius: 8px; }
+.rv-pack { position: relative; width: min(56vw, 240px); margin-top: -34px; z-index: 1; perspective: 600px; }
+.rv-env { display: block; width: 100%; height: auto; filter: drop-shadow(0 10px 18px rgba(0,0,0,.55)); }
+.rv-flap { position: absolute; left: 0; top: 5.5%; width: 100%; height: auto; transform-origin: 50% 2%; animation: rvFlap calc(.5s * var(--sp)) calc(.2s * var(--sp)) ease-in both; }
+.rv-words { font: 700 clamp(15px, 4.2vw, 19px)/1.35 Georgia, "Times New Roman", serif; color: #efe3c6; text-align: center; }
+.rv-words span { display: inline-block; animation: rvUp calc(.4s * var(--sp)) calc((1.3s + var(--i) * .3s) * var(--sp)) both; }
+.rv-tap { font-size: 12px; color: #a99c80; animation: rvUp .4s calc(2.4s * var(--sp)) both; }
+@keyframes rvIn { from { opacity: 0; } }
+@keyframes rvUp { from { opacity: 0; transform: translateY(10px); } }
+@keyframes rvFlap { to { transform: rotateX(180deg); } }
+@keyframes rvCard { 0% { opacity: 0; transform: translateY(70%) scale(.42) rotate(0deg); } 25% { opacity: 1; } 100% { opacity: 1; transform: translateY(0) scale(1) rotate(calc((var(--i) - 1) * 4deg)); } }
+@media (min-width: 900px) { .rv-card { width: 170px; } .rv-pack { width: 260px; } }
+
+/* ---- replay at the end of a game */
+.game.replaying .bar .acts .btn { min-width: 44px; }
+.rp-n { display: inline-block; min-width: 44px; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }

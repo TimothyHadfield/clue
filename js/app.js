@@ -6,13 +6,17 @@ import { createOnline } from "./online.js";
 import { EDITIONS, RULESETS, SUSPECT_COLORS, cardName, shortName } from "./cards.js";
 import { cardSvg, cardBackHtml, weaponSvg, roomSvg, pawnSvg, dieHtml, logoSvg } from "./art.js";
 import { boardSvg, roomHitPaths, placeXY, tokenSvg, weaponPieceSvg, walkPath, ROOMS } from "./boardview.js";
-import { reach, PASSAGE, idx, rc, DOOR_LIST } from "./board.js";
+import { reach, PASSAGE, idx, rc, DOOR_LIST, STEPS_TO_ROOM } from "./board.js";
 import { makeZoom } from "./zoom.js";
 import { factsFor, handSizes } from "./knowledge.js";
 import { recordsFor, LEVELS } from "./ai.js";
 import { initNotepad, refreshNotepad } from "./notepad.js";
 import { $, $$, esc, store, settings, saveSettings, toast, sheet, closeSheet, sheetOpen, pushLayer, popLayer, takeOwnBack, pct, heat, help, askSolver } from "./ui.js";
 import { initLearn } from "./learn.js";
+import { LEVELS as PF_LEVELS, achievements, result as pfResult, DAILY } from "./clue-profile.js";
+import { tutorialSteps, rulesSheet, TUTORIAL } from "./tutorial.js";
+import { revealScene } from "./reveal.js";
+const Profile = window.Profile, COACH = window.COACH;
 
 // sounds, celebrations and animations (all switchable in Settings → Sound & effects)
 const FX = window.FX;
@@ -41,6 +45,7 @@ function showTab(t, push = true) {
 $$("nav.tabs button").forEach((b) => (b.onclick = () => showTab(b.dataset.tab)));
 window.addEventListener("popstate", () => {
   const o = $("#overlay");
+  if (window.COACH && COACH.rulesOpen()) { rulesByBack = true; COACH.closeRules(); return; }
   if (takeOwnBack()) { if (sheetOpen() || (gameEl && gameEl.classList.contains("notesopen"))) pushLayer("again"); return; }
   if (sheetOpen()) { if (o.dataset.lock === "1") pushLayer("sheet"); else closeSheet(true); return; }
   if (gameEl && gameEl.classList.contains("notesopen")) { gameEl.classList.remove("notesopen"); return; }
@@ -51,19 +56,34 @@ window.addEventListener("popstate", () => {
 });
 
 // ------------------------------------------------------------------ local room (same snapshot shape as online.js, plus save/resume)
-function localRoom({ seats, options, state }) {
+function localRoom({ seats, options, state, meta, rng, dealRng }) {
   const handlers = [];
   const S = seats;
-  let st = state || game.setup(S.length, options, Math.random, S);
+  rng = rng || Math.random;
+  let st = state || game.setup(S.length, options, dealRng || rng, S);
   let timer = null, closed = false;
   const humanSeat = S.findIndex((s) => s.kind === "human");
+  // this game's own record: Daily / guided game, help used (Undo, Best question), frames for the replay
+  meta = Object.assign({ id: st.env.join(",") + ":" + Date.now().toString(36), daily: null, tutorial: false, helped: false, frames: [], myTurns: 0, myTurnNo: 0, oddsUsed: false, hunch: false, startWr: st.weaponRoom.slice() }, meta || {});
+  const undos = [];   // the game as it was before each of your last moves (this page only)
+  const frame = () => {
+    const f = meta.frames, L = st.last;
+    if (!L || (f.length && JSON.stringify(f[f.length - 1].last) === JSON.stringify(L))) return;
+    if (L.t === "suggest" || L.t === "roll") return;   // the finished suggestion / the move are the frames worth seeing
+    f.push({ pos: JSON.parse(JSON.stringify(st.pos)), wr: st.weaponRoom.slice(), last: L, turnNo: st.turnNo });
+    if (f.length > 800) f.splice(0, f.length - 800);
+  };
+  const track = () => {
+    if (st.turn === humanSeat && st.phase === "start" && meta.myTurnNo !== st.turnNo) { meta.myTurnNo = st.turnNo; meta.myTurns++; }
+    if (settings.odds) meta.oddsUsed = true;
+  };
   const snap = () => {
     const over = game.isOver(st);
     const toAct = over ? [] : game.toAct(st);
     return { mode: "local", status: over ? "finished" : "playing", seats: S.map((s) => ({ kind: s.kind, name: s.name, online: true })),
       toAct, pub: game.publicView(st), mySeat: humanSeat, mine: game.privateView(st, humanSeat), myTurn: toAct.includes(humanSeat), isHost: true };
   };
-  const emit = () => { store.set("local", { seats: S, state: st }); const s = snap(); handlers.forEach((f) => f(s)); bots(); };
+  const emit = () => { frame(); track(); store.set("local", { seats: S, state: st, meta }); const s = snap(); handlers.forEach((f) => f(s)); bots(); };
   function bots() {
     if (timer || closed || game.isOver(st)) return;
     const b = game.toAct(st).filter((x) => S[x].kind === "computer");
@@ -75,7 +95,7 @@ function localRoom({ seats, options, state }) {
       const seat = b[0];
       try {
         const a = game.bot({ pub: game.publicView(st), mine: game.privateView(st, seat), state: st }, seat, Math.random);
-        st = game.apply(JSON.parse(JSON.stringify(st)), seat, a, Math.random);
+        st = game.apply(JSON.parse(JSON.stringify(st)), seat, a, rng);
       } catch (e) { console.error(e); return; }
       emit();
     }, delay);
@@ -86,10 +106,25 @@ function localRoom({ seats, options, state }) {
     act(a) {
       if (closed) return { ok: false, message: "Not your turn" };
       if (!game.toAct(st).includes(humanSeat)) return { ok: false, message: "Not your turn" };
-      try { st = game.apply(JSON.parse(JSON.stringify(st)), humanSeat, a, Math.random); }
+      const before = JSON.stringify(st);
+      if (meta.tutorial && a.type === "roll") tutorialDice(st, rng);
+      try { st = game.apply(JSON.parse(before), humanSeat, a, rng); }
       catch (e) { FX.play("error"); toast(e.message); return { ok: false, message: e.message }; }
+      if (!meta.daily) { undos.push({ st: before, q: myQuestions.length, f: meta.frames.length, t: meta.myTurns, tn: meta.myTurnNo }); if (undos.length > 6) undos.shift(); }
       emit(); return { ok: true };
     },
+    /** Undo (vs computers, not in the Daily): back to just before your last move. Counts as help. */
+    canUndo() { return !closed && !meta.daily && undos.length > 0 && !game.isOver(st); },
+    undo() {
+      if (!this.canUndo()) return false;
+      const u = undos.pop();
+      clearTimeout(timer); timer = null;
+      st = JSON.parse(u.st);
+      meta.helped = true; meta.frames.length = Math.min(meta.frames.length, u.f); meta.myTurns = u.t; meta.myTurnNo = u.tn;
+      myQuestions.length = Math.min(myQuestions.length, u.q); store.set("questions", myQuestions);
+      emit(); return true;
+    },
+    meta,
     start() { emit(); },
     close() { closed = true; clearTimeout(timer); },
     get state() { return st; },
@@ -108,7 +143,6 @@ function setupView() {
   room = null; snapNow = null; prevPub = null; gameEl = null; view = "setup";
   const n = settings.players;
   const used = suspectsFor(n, settings.me);
-  const rec = store.get("record", { w: 0, l: 0 });
   play.innerHTML = `<div class="setup-wrap">
     <div class="hero">${logoSvg()}<p>Find who, with what, and where — first.</p></div>
     <div class="panel stack">
@@ -117,19 +151,71 @@ function setupView() {
       <div><div class="label">Computers ${help("How strong are they?", "Easy only crosses off cards it is shown. Medium reasons like a careful player with a pencil. Hard counts every possible deal and asks the question that teaches it the most. Win rates are on the Learn tab.")}</div>
         <div class="seg" id="plv">${LEVELS.map((l, i) => `<button data-l="${i}" class="${i === settings.level ? "on" : ""}">${l}</button>`).join("")}</div></div>
       <button class="btn primary" id="go" style="min-height:50px;font-size:17px">Deal</button>
-      <button class="btn" id="goOnline">Play online</button>
+      <div class="row two"><button class="btn" id="goDaily">Daily game</button><button class="btn" id="goOnline">Play online</button></div>
     </div>
-    <div class="record"><span>You won ${rec.w}</span><span>Lost ${rec.l}</span></div>
+    <div class="record"><button class="pf-open me-btn" id="meBtn" aria-label="My stats"></button></div>
   </div>`;
   $$("#pn button").forEach((b) => (b.onclick = () => { settings.players = +b.dataset.n; saveSettings(); setupView(); }));
   $$("#pme button").forEach((b) => (b.onclick = () => { settings.me = +b.dataset.s; saveSettings(); setupView(); }));
   $$("#plv button").forEach((b) => (b.onclick = () => { settings.level = +b.dataset.l; saveSettings(); setupView(); }));
-  $("#go").onclick = startLocal;
+  $("#go").onclick = () => startLocal();
   $("#goOnline").onclick = onlineView;
+  $("#goDaily").onclick = startDaily;
+  $("#meBtn").onclick = () => Profile.openPanel();
+  paintMe();
+  offerTutorial();
 }
-function gameOptions(chars) {
-  const R = RULESETS[settings.rules] || RULESETS.classic;
-  return { chars, dice: R.dice, stay: R.stay, upTo: R.upTo, edition: settings.edition, levels: chars.map(() => settings.level) };
+/** The My stats button: your picture, "My stats" and your wins / losses. */
+function paintMe() {
+  const b = $("#meBtn");
+  if (!b || !Profile) return;
+  let st = null; try { st = Profile.stats(); } catch (e) {}
+  b.innerHTML = Profile.avatarSVG(Profile.avatar, 26) + `<span>My stats</span>` + (st ? `<span class="wl">Won ${st.wins} · Lost ${st.losses}</span>` : "");
+}
+/** Today's Daily game: the same deal for everyone today (4 players, 3 Hard computers, Clue rules). */
+function startDaily() {
+  const day = Profile.daily.date();
+  if (room && room.meta && room.meta.daily === day && snapNow && snapNow.pub && !snapNow.pub.over) { Profile.closePanel(); showTab("play"); return; }
+  if (Profile.daily.played(day)) { Profile.openPanel({ tab: "daily" }); return; }
+  if (online && snapNow && snapNow.mode === "online") { Profile.closePanel(); toast("Leave the online room first"); return; }
+  if (room && snapNow && snapNow.pub && !snapNow.pub.over) { Profile.closePanel(); toast("Finish or quit this game first (Settings)"); return; }
+  Profile.closePanel(); showTab("play");
+  startLocal(null, { daily: day });
+}
+/** First visit: offer the guided first game once. */
+function offerTutorial() {
+  if (!COACH || !tour || tour.seen() || COACH.offered("clue-first")) return;
+  COACH.offer({ id: "clue-first", title: "New to Clue?", text: "Play a guided first game against two easy computers.", yes: "Teach me", no: "No thanks", onYes: () => startTutorial() });
+}
+function startTutorial() {
+  if (online && snapNow && snapNow.mode === "online") { toast("Leave the online room first"); return; }
+  if (room && room.close) room.close();
+  store.del("local");
+  closeSheet(true);
+  showTab("play", true);
+  tour.reset();
+  startLocal(null, { tutorial: true });
+  tour.start();
+}
+let rulesByBack = false;
+function openRules(open) {
+  if (!COACH) return;
+  closeSheet();
+  pushLayer("rules");
+  COACH.rules(Object.assign(rulesSheet(E()), open ? { open } : {}, { onClose: () => { if (!rulesByBack) popLayer(); rulesByBack = false; } }));
+}
+function gameOptions(chars, fixed = {}) {
+  const R = RULESETS[fixed.rules || settings.rules] || RULESETS.classic;
+  const lv = fixed.level != null ? fixed.level : settings.level;
+  return { chars, dice: R.dice, stay: R.stay, upTo: R.upTo, edition: settings.edition, levels: chars.map(() => lv) };
+}
+/** Guided game: each of your first rolls is just enough to reach the nearest room (or a 6). */
+function tutorialDice(st, rng) {
+  if (!rng || !rng.stackInts || st.turnNo > 12) return;
+  const p = st.pos[st.chars[st.turn]];
+  let need = 6;
+  if (p.sq != null) need = Math.min(...STEPS_TO_ROOM.map((a) => a[p.sq]));
+  rng.clear(); rng.stackInts([Math.max(1, Math.min(6, need)) - 1], 6);
 }
 /** You plus the next suspects clockwise. */
 function suspectsFor(n, me) {
@@ -137,17 +223,24 @@ function suspectsFor(n, me) {
   for (let k = 1; s.length < n; k++) s.push((me + k) % 6);
   return s.sort((a, b) => a - b);
 }
-function startLocal(resume) {
-  let seats, options, state = null;
-  if (resume && resume.state) { seats = resume.seats; state = resume.state; options = state.opts; }
-  else {
-    const chars = suspectsFor(settings.players, settings.me);
-    seats = chars.map((c) => (c === settings.me ? { kind: "human", name: "You" } : { kind: "computer", name: E().short[c] }));
-    options = gameOptions(chars);
+function startLocal(resume, how = {}) {
+  let seats, options, state = null, meta = null, rng = null, dealRng = null;
+  if (resume && resume.state) {
+    seats = resume.seats; state = resume.state; options = state.opts; meta = resume.meta || null;
+    if (meta && meta.tutorial) rng = COACH.rng(TUTORIAL.seed + state.turnNo * 7919 + state.log.length);
+  } else {
+    const n = how.daily ? DAILY.players : how.tutorial ? TUTORIAL.players : settings.players;
+    const meChar = how.daily ? DAILY.me : how.tutorial ? TUTORIAL.me : settings.me;
+    const chars = suspectsFor(n, meChar);
+    seats = chars.map((c) => (c === meChar ? { kind: "human", name: "You" } : { kind: "computer", name: E().short[c] }));
+    options = gameOptions(chars, how.daily ? { level: DAILY.level, rules: DAILY.rules } : how.tutorial ? { level: TUTORIAL.level, rules: TUTORIAL.rules } : {});
     myQuestions = [];
     store.set("questions", myQuestions);
+    meta = { daily: how.daily || null, tutorial: !!how.tutorial, helped: !!how.tutorial };
+    if (how.daily) dealRng = Profile.daily.rng(how.daily);
+    if (how.tutorial) rng = COACH.rng(TUTORIAL.seed);
   }
-  room = localRoom({ seats, options, state });
+  room = localRoom({ seats, options, state, meta, rng, dealRng });
   room.on("change", onSnap);
   paused = false;
   store.set("owner", TAB);
@@ -186,14 +279,21 @@ function validSave(sv) {
       && Number.isInteger(st.turn) && st.turn >= 0 && st.turn < n && !!st.opts && typeof st.opts === "object";
   } catch (e) { return false; }
 }
-/** Count a finished local game once in your win/loss record. */
-function recordLocal(turnNo, env, won) {
+/** Count a finished (or quit) local game once in your win/loss record and in My stats. */
+function recordLocal(turnNo, env, won, meta, st) {
   const k = "counted:" + turnNo + ":" + env.join(",");
   if (store.get(k, false)) return;
   const rec = store.get("record", { w: 0, l: 0 });
   if (won) rec.w++; else rec.l++;
   store.set("record", rec);
   store.set(k, true);
+  if (!Profile || !meta || !st) return;
+  const q = myQuestions.length ? myQuestions.reduce((a, x) => a + (x.best > 0 ? x.got / x.best : 1), 0) / myQuestions.length : null;
+  const lv = (st.opts.levels || []).find((l, i) => st.kinds && st.kinds[i] === "computer");
+  const r = pfResult({ won, level: lv != null ? lv : (st.opts.levels || [])[0], helped: meta.helped || meta.tutorial, daily: !!meta.daily, players: st.n,
+    myTurns: meta.myTurns, quality: q, oddsOff: !meta.oddsUsed, hunch: meta.hunch });
+  try { Profile.recordResult(meta.daily ? Object.assign(r, { date: meta.daily }) : r); } catch (e) { /* stats never break the game */ }
+  paintMe();
 }
 
 function onSnap(snap) {
@@ -358,7 +458,14 @@ async function renderGame(snap, prev, fresh) {
   updateNotes(snap);
   renderLog(pub);
   announce(snap, prev);
-  if (fresh && pub.over && !(pp && pp.over)) setTimeout(() => gameOver(snap), 900 / settings.speed);
+  if (fresh && pub.over && !(pp && pp.over)) setTimeout(async () => {
+    // the case file opens and its three cards slide out, then the result sheet
+    if (pub.reveal) {
+      const t = pub.winner >= 0 ? (pub.winner === snap.mySeat ? "You solved it!" : esc(seatName(pub, pub.winner, snap)) + " solved it") : "Nobody solved it";
+      try { await revealScene({ cards: pub.reveal.env, edition: settings.edition, title: t, FX }); } catch (e) {}
+    }
+    if (snapNow === snap) gameOver(snap);
+  }, 900 / settings.speed);
 }
 
 function seatName(pub, i, snap) {
@@ -484,6 +591,8 @@ function renderBar(snap) {
     msg = t + (pub.roll && pub.phase !== "disprove" ? " " + dice(pub.roll) : "");
     if (me >= 0 && pub.out[me]) msg += ` <span class="sub">(you're out — still showing cards)</span>`;
   }
+  // Undo: against the computers only (never online, never in the Daily); it makes the game unrated
+  if (snap.mode === "local" && room && room.canUndo && room.meta && !room.meta.daily && ph && !pub.over && room.canUndo()) acts += `<button class="btn ghost" id="bUndo">Undo</button>`;
   bar.classList.toggle("mine", !!ph && !pub.over);
   // the buttons row is always there (empty on others' turns) so the board never jumps between turns
   $(".msg", bar).innerHTML = msg;
@@ -495,7 +604,8 @@ function renderBar(snap) {
   on("bAcc", () => accuseSheet(snap));
   on("bEnd", () => act({ type: "end" }));
   on("bShow", () => showSheet(snap));
-  on("bNew", () => { store.del("local"); if (room && room.close) room.close(); if (online && snap.mode === "online") online.leave(); setupView(); });
+  on("bUndo", undo);
+  on("bNew", () => { if (snap.mode === "local" && room && room.meta && pub.reveal) recordLocal(pub.turnNo, pub.reveal.env, pub.winner === me, room.meta, room.state); store.del("local"); if (room && room.close) room.close(); if (online && snap.mode === "online") online.leave(); setupView(); });
   on("bSum", () => gameOver(snap));
   if (ph === "disprove" && !$("#overlay").classList.contains("on")) showSheet(snap);
   if (ph === "start" && settings.odds) reachOdds(pub, place);
@@ -526,6 +636,14 @@ function reachOdds(pub, place) {
   if (el) el.innerHTML = !settings.odds ? "" : `Room this roll: <b style="color:${heat(p)}">${pct(p)}</b>`;
 }
 
+/** Best question / Best guess are hints: the game is then counted "with help", not rated. */
+function usedHelp() { if (room && room.meta && room.mode === "local") room.meta.helped = true; }
+function undo() {
+  if (!room || !room.undo || paused) return;
+  closeSheet();
+  snapNow = null;   // no sounds or walks for the step back
+  if (room.undo()) { if (COACH) COACH.emit("undo"); toast("Took back your last move — this game is unrated now", 2600); }
+}
 let lastAct = { k: "", t: 0 };
 async function act(a) {
   if (paused) { takeBack(); return; }
@@ -688,7 +806,7 @@ function suggestSheet(snap) {
     $("#qinfo", el).innerHTML = bits != null && best ? `This question is worth <b style="color:${heat(best.bits ? bits / best.bits : 1)}">${bits.toFixed(2)} bits</b> (best ${best.bits.toFixed(2)})` : best ? `Best here: ${best.cards.slice(0, 2).map(sname).join(" + ")} — ${best.bits.toFixed(2)} bits` : "";
   };
   draw();
-  $("#sBest", el).onclick = () => { if (best) { pickS = best.cards[0]; pickW = best.cards[1]; draw(); } };
+  $("#sBest", el).onclick = () => { if (best) { usedHelp(); pickS = best.cards[0]; pickW = best.cards[1]; draw(); } };
   let sent = false;
   $("#sGo", el).onclick = () => {
     if (sent) return; sent = true;
@@ -718,9 +836,13 @@ function accuseSheet(snap) {
     } else $("#ainfo", el).innerHTML = "";
   };
   draw();
-  $("#aTop", el).onclick = () => { pick = top.cards.slice(); draw(); };
+  $("#aTop", el).onclick = () => { usedHelp(); pick = top.cards.slice(); draw(); };
   $("#aNo", el).onclick = closeSheet;
-  $("#aGo", el).onclick = () => act({ type: "accuse", suspect: pick[0], weapon: pick[1], room: pick[2] - 12 });
+  $("#aGo", el).onclick = () => {
+    // "Hunch": you accused while your notes still allowed another answer
+    if (room && room.meta && notes) { const m = notes.env.find((x) => x.cards.every((c, i) => c === pick[i])); room.meta.hunch = !m || m.p < 0.9995; }
+    act({ type: "accuse", suspect: pick[0], weapon: pick[1], room: pick[2] - 12 });
+  };
 }
 function showSheet(snap) {
   const pub = snap.pub, opts = snap.mine.mustShow || [];
@@ -740,15 +862,71 @@ function gameOver(snap) {
   if (!pub.reveal) return;
   const me = snap.mySeat;
   const won = pub.winner === me;
-  if (snap.mode === "local") { recordLocal(pub.turnNo, pub.reveal.env, won); store.del("local"); }
+  if (snap.mode === "local" && room && room.meta) { recordLocal(pub.turnNo, pub.reveal.env, won, room.meta, room.state); store.del("local"); }
   const q = myQuestions.length ? myQuestions.reduce((a, x) => a + (x.best > 0 ? x.got / x.best : 1), 0) / myQuestions.length : null;
   const hands = pub.reveal.hands.map((h, i) => `<div class="row" style="font-size:13px;gap:6px"><i style="width:10px;height:10px;border-radius:50%;background:${SUSPECT_COLORS[pub.chars[i]]};display:inline-block"></i><b style="min-width:58px">${esc(seatName(pub, i, snap))}</b><span class="muted">${h.map(sname).join(", ")}</span></div>`).join("");
   sheet(`<h3>${pub.winner >= 0 ? (won ? "You solved it!" : esc(seatName(pub, pub.winner, snap)) + " solved it") : "Nobody solved it"}</h3>
     <div class="row" style="justify-content:center;gap:8px;margin:6px 0 10px">${pub.reveal.env.map((c, k) => `<div class="cardf lg turnup" style="animation-delay:${0.15 + k * 0.35}s">${cardSvg(settings.edition, c)}${cardBackHtml()}</div>`).join("")}</div>
     ${q != null ? `<p>Your questions found <b style="color:${heat(q)}">${Math.round(q * 100)}%</b> of the best possible information ${help("Question quality", "Each time you suggested, the notes compared what your question could teach you (in bits) with the best question available in that room. 100% means you always asked the best one.")}</p>` : ""}
     <div class="stack" style="gap:3px">${hands}</div>
-    <div class="row" style="justify-content:flex-end;margin-top:10px"><button class="btn" data-close>Look at board</button><button class="btn primary" id="again">New game</button></div>`,
-    (el) => { $("[data-close]", el).onclick = closeSheet; $("#again", el).onclick = () => { closeSheet(); store.del("local"); if (snap.mode === "online" && online) online.leave(); setupView(); }; });
+    <div class="row" style="justify-content:flex-end;margin-top:10px">${canReplay() ? `<button class="btn" id="replay">Replay</button>` : ""}<button class="btn" data-close>Look at board</button><button class="btn primary" id="again">New game</button></div>`,
+    (el) => { $("[data-close]", el).onclick = closeSheet; const rb = $("#replay", el); if (rb) rb.onclick = () => { closeSheet(); startReplay(); }; $("#again", el).onclick = () => { closeSheet(); store.del("local"); if (snap.mode === "online" && online) online.leave(); setupView(); }; });
+}
+
+// ------------------------------------------------------------------ replay (local games): every move and question again, with every card face up
+let rp = null;   // { frames, i, timer, st }
+function canReplay() { return !!(room && room.mode === "local" && room.meta && room.meta.frames && room.meta.frames.length && room.state && room.state.over); }
+function frameText(f, st) {
+  const nm = (i) => `<b style="color:${SUSPECT_COLORS[st.chars[i]]}">${esc(seatName(st, i, snapNow))}</b>`;
+  const L = f.last;
+  if (!L) return "The cards are dealt";
+  if (L.t === "move") return L.to && L.to.room != null ? `${nm(L.by)} walked into the ${esc(E().rooms[L.to.room])}` : `${nm(L.by)} moved`;
+  if (L.t === "passage") return `${nm(L.by)} took the secret passage to the ${esc(E().rooms[L.to])}`;
+  if (L.t === "suggestDone") {
+    const r = st.log[L.i];
+    if (!r) return "";
+    const shown = r.shower != null ? ((st.showed[r.shower] || []).find((x) => x.i === L.i) || {}).card : null;
+    return `${nm(r.by)} asked ${r.cards.map((c) => esc(sname(c))).join(", ")}: ` + (r.shower == null ? "nobody could show a card" : `${nm(r.shower)} showed <b>${esc(sname(shown))}</b>`);
+  }
+  if (L.t === "accuse") return `${nm(L.by)} accused ${L.cards.map((c) => esc(sname(c))).join(", ")}: <b>${L.correct ? "right!" : "wrong, out"}</b>`;
+  return "";
+}
+function startReplay() {
+  if (!canReplay() || !gameEl) return;
+  const st = room.state;
+  const first = { pos: game.setup(st.n, st.opts, () => 0.5, []).pos, wr: (room.meta.startWr || st.weaponRoom), last: null };
+  rp = { frames: [first].concat(room.meta.frames), i: 0, timer: null, st };
+  gameEl.classList.add("replaying");
+  if (zoom && zoom.zoomed) zoom.reset();
+  drawReplay();
+}
+function drawReplay() {
+  if (!rp || !gameEl) return;
+  const f = rp.frames[rp.i];
+  placePieces({ pos: f.pos, weaponRoom: f.wr });
+  const bar = $("#bar", gameEl);
+  bar.classList.remove("mine");
+  $(".msg", bar).innerHTML = `<span class="rp-n">${rp.i + 1}/${rp.frames.length}</span> ${frameText(f, rp.st)}`;
+  $(".acts", bar).innerHTML = `<button class="btn" id="rpStart" aria-label="First">⏮</button><button class="btn" id="rpBack" aria-label="Back">◀</button><button class="btn primary" id="rpPlay">${rp.timer ? "Pause" : "Play"}</button><button class="btn" id="rpNext" aria-label="Next">▶</button><button class="btn ghost" id="rpDone">Done</button>`;
+  const go = (i) => { rp.i = Math.max(0, Math.min(rp.frames.length - 1, i)); drawReplay(); };
+  $("#rpStart", bar).onclick = () => { stopPlay(); go(0); };
+  $("#rpBack", bar).onclick = () => { stopPlay(); go(rp.i - 1); };
+  $("#rpNext", bar).onclick = () => { stopPlay(); go(rp.i + 1); };
+  $("#rpPlay", bar).onclick = () => {
+    if (rp.timer) { stopPlay(); drawReplay(); return; }
+    if (rp.i >= rp.frames.length - 1) rp.i = 0;
+    rp.timer = setInterval(() => { if (!rp) return; if (rp.i >= rp.frames.length - 1) { stopPlay(); drawReplay(); return; } go(rp.i + 1); }, 1100 / settings.speed);
+    drawReplay();
+  };
+  $("#rpDone", bar).onclick = endReplay;
+}
+function stopPlay() { if (rp && rp.timer) { clearInterval(rp.timer); rp.timer = null; } }
+function endReplay() {
+  stopPlay(); rp = null;
+  if (!gameEl || !snapNow) return;
+  gameEl.classList.remove("replaying");
+  placePieces(snapNow.pub);
+  renderBar(snapNow);
 }
 
 // ------------------------------------------------------------------ ONLINE
@@ -791,6 +969,8 @@ function handOver(i) {
 function quitGame() {
   closeSheet(true);
   try { history.replaceState(null, "", "#play"); } catch (e) {}
+  // quitting a game against the computers counts as a loss
+  if (room && room.mode === "local" && room.meta && !room.state.over) recordLocal(room.state.turnNo, room.state.env, false, room.meta, room.state);
   store.del("local");
   if (room && room.close) room.close();
   if (snapNow && snapNow.mode === "online" && online) online.leave();
@@ -866,6 +1046,8 @@ function settingsView() {
     <div class="setrow"><div class="lbl">Speed<small>Computer turns and walking</small></div>${seg("speed", [[0.6, "Slow"], [1, "Normal"], [2, "Fast"]])}</div>
   </div>
   <div class="panel"><div class="label">Sound &amp; effects</div><div id="fxSet"></div></div>
+  <div class="panel"><div class="setrow"><div class="lbl">Rules<small>The whole rulebook, in short sections</small></div><button class="btn small" id="sRules">Rules</button></div>
+    <div class="setrow"><div class="lbl">Guided game<small>A first game that shows you each step</small></div><button class="btn small" id="sTut">Replay tutorial</button></div></div>
   ${snapNow && snapNow.pub && !snapNow.pub.over ? `<div class="panel"><div class="setrow"><div class="lbl">${snapNow.mode === "online" ? "Leave room" : "Quit game"}<small>${snapNow.mode === "online" ? "A computer takes your seat" : "Ends the game you're playing"}</small></div><button class="btn small danger" id="sQuit">${snapNow.mode === "online" ? "Leave" : "Quit"}</button></div></div>` : ""}
   <div class="panel"><div class="setrow"><div class="lbl">Reset record<small>Your win/loss count</small></div><button class="btn small" id="sReset">Reset</button></div></div></div>`;
   $$("[data-key]", el).forEach((g) => $$("button", g).forEach((b) => (b.onclick = () => {
@@ -878,10 +1060,56 @@ function settingsView() {
   const q = $("#sQuit", el);
   if (q) q.onclick = () => sheet(`<h3>${snapNow.mode === "online" ? "Leave this room?" : "Quit this game?"}</h3><div class="row" style="justify-content:flex-end"><button class="btn ghost" data-close>Cancel</button><button class="btn danger" id="qYes">${snapNow.mode === "online" ? "Leave" : "Quit"}</button></div>`,
     (s) => { $("[data-close]", s).onclick = closeSheet; $("#qYes", s).onclick = quitGame; });
-  $("#sReset", el).onclick = () => { store.set("record", { w: 0, l: 0 }); toast("Record reset"); };
+  $("#sReset", el).onclick = () => { store.set("record", { w: 0, l: 0 }); try { Profile.reset(); } catch (e) {} paintMe(); toast("Record reset"); };
+  $("#sRules", el).onclick = () => openRules();
+  $("#sTut", el).onclick = () => {
+    if (snapNow && snapNow.mode === "online") { toast("Leave the online room first"); return; }
+    if (room && snapNow && snapNow.pub && !snapNow.pub.over && !(room.meta && room.meta.tutorial)) {
+      sheet(`<h3>Start the guided game?</h3><p>The game you're playing ends and counts as a loss.</p><div class="row" style="justify-content:flex-end"><button class="btn ghost" data-close>Cancel</button><button class="btn primary" id="tYes">Start</button></div>`,
+        (s2) => { $("[data-close]", s2).onclick = closeSheet; $("#tYes", s2).onclick = () => { recordLocal(room.state.turnNo, room.state.env, false, room.meta, room.state); startTutorial(); }; });
+      return;
+    }
+    startTutorial();
+  };
 }
 
 // ------------------------------------------------------------------ boot
+// My stats, achievements and the Daily game (shared _profile kit; everything stays on this device)
+try {
+  Profile.init({
+    game: "clue", levels: PF_LEVELS, achievements: achievements(),
+    modes: { help: { name: "Computers, with help" }, online: { hide: true }, friends: { hide: true } },
+    daily: { title: "Daily game", onPlay: () => startDaily() },
+    onChange: (what) => { if (what === "me" || what === "import" || what === "result" || what === "reset") paintMe(); },
+  });
+  // bring the old win/loss counter into My stats once (unrated: the level wasn't kept)
+  const rec = store.get("record", { w: 0, l: 0 });
+  if (!store.get("pfMoved", false)) {
+    store.set("pfMoved", true);
+    const day = Profile.daily.date();
+    let w = Math.min(rec.w, 200), l = Math.min(rec.l, 200);
+    while (w > 0 || l > 0) {   // interleaved, so moving them in doesn't invent a winning streak
+      if (l > 0) { l--; Profile.recordResult({ mode: "computer", level: null, won: false, date: day, quiet: true }); }
+      if (w > 0) { w--; Profile.recordResult({ mode: "computer", level: null, won: true, date: day, quiet: true }); }
+    }
+  }
+} catch (e) { console.warn("profile", e); }
+// the guided first game: steps follow the game's own state; they step aside on other tabs and under sheets
+let tour = null;
+try {
+  tour = COACH.tour({
+    id: "clue-first",
+    steps: tutorialSteps({ snap: () => (room && room.meta && room.meta.tutorial && snapNow && snapNow.mode === "local" ? snapNow : null), wide: () => window.matchMedia("(min-width: 900px)").matches }),
+    pauseIf: () => !$("#tab-play").classList.contains("active") || !(room && room.meta && room.meta.tutorial) || sheetOpen() || (Profile && Profile.isOpen()),
+  });
+} catch (e) { console.warn("coach", e); }
+// home-screen install: reload for a new build only when nothing would be lost
+if (window.PWA) window.PWA.safeToReload = () => {
+  const ae = document.activeElement;
+  if ((snapNow && snapNow.mode === "online") || view === "lobby" || view === "onlineForm" || sheetOpen() || (COACH && COACH.rulesOpen()) || (Profile && Profile.isOpen())) return false;
+  if (ae && /^(INPUT|SELECT|TEXTAREA)$/.test(ae.tagName)) return false;
+  return view === "setup" || !snapNow || !snapNow.pub || snapNow.pub.over;
+};
 settingsView();
 initNotepad($("#tab-table"));
 showTab(location.hash.slice(1) || "play", false);
@@ -892,11 +1120,11 @@ showTab(location.hash.slice(1) || "play", false);
   else if (saved && saved.state.over) {
     // the page was closed in the moment the game ended: count it, then start fresh
     const me = saved.seats.findIndex((x) => x.kind === "human");
-    recordLocal(saved.state.turnNo, saved.state.env, saved.state.winner === me);
+    recordLocal(saved.state.turnNo, saved.state.env, saved.state.winner === me, saved.meta || {}, saved.state);
     store.del("local");
   } else if (saved) {
     myQuestions = store.get("questions", []);
-    try { startLocal(saved); return; } catch (e) { console.warn("saved game dropped", e); store.del("local"); room = null; }
+    try { startLocal(saved); if (saved.meta && saved.meta.tutorial && tour) tour.resume(); return; } catch (e) { console.warn("saved game dropped", e); store.del("local"); room = null; }
   }
   setupView();
   try { if (localStorage.getItem("online.clue")) { const ok = await getOnline().resume(); if (!ok) setupView(); } } catch (e) {}
@@ -904,7 +1132,7 @@ showTab(location.hash.slice(1) || "play", false);
 })();
 
 // test hook (headless checks)
-window.__clue = { get snap() { return snapNow; }, act, settings, get online() { return online; } };
+window.__clue = { get snap() { return snapNow; }, act, settings, get online() { return online; }, get room() { return room; }, undo, startDaily, startTutorial, openRules, get tour() { return tour; } };
 
 // turning the phone: the seats across the table re-fit their name plates
 let fitT = null;
