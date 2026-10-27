@@ -1,12 +1,38 @@
 {
-  "how": "Computers played each other with the real rules (Clue rules, 4 players unless noted). The tested computer took every seat in turn so going first didn't skew it. Measured 2026-10-19 with tools/sim.js. A fair share is 25% with 4 players.",
+  "how": "Computers played each other with the real rules (Clue rules, 4 players unless noted). The tested computer took every seat in turn so going first didn't skew it. Measured 2026-10-27 with tools/sim.js after Hard got stronger. A fair share is 25% with 4 players.",
   "vs": [
-    { "label": "Hard vs 3 Medium", "win": 0.3675, "note": "400 games. Fair share is 25%. Hard counts every possible deal and asks the most useful question." },
-    { "label": "Hard vs 5 Medium", "win": 0.21, "note": "200 games, 6 players. Fair share is 17%." },
-    { "label": "Medium vs 3 Easy", "win": 0.745, "note": "200 games, measured 2026-10-20 after Easy learned the \"nobody could answer\" trick." },
-    { "label": "Hard vs 3 Easy", "win": 0.82, "note": "200 games, measured 2026-10-20." }
+    {
+      "label": "Hard vs 3 Medium",
+      "win": 0.411,
+      "note": "2000 games. Fair share is 25%. Was 33% before Hard learned to accuse a little sooner and to read the other computers' questions. About 68% one-on-one."
+    },
+    {
+      "label": "Hard vs 2 Medium",
+      "win": 0.498,
+      "note": "2000 games, 3 players. Fair share is 33%. Was 43%."
+    },
+    {
+      "label": "Hard vs 5 Medium",
+      "win": 0.292,
+      "note": "1000 games, 6 players. Fair share is 17%. Was 21%."
+    },
+    {
+      "label": "Medium vs 3 Easy",
+      "win": 0.7615,
+      "note": "2000 games."
+    },
+    {
+      "label": "Hard vs 3 Easy",
+      "win": 0.8305,
+      "note": "2000 games."
+    }
   ],
-  "seat": [0.3175, 0.2425, 0.2275, 0.2125],
+  "seat": [
+    0.3175,
+    0.2425,
+    0.2275,
+    0.2125
+  ],
   "seatHow": "400 games, four Medium computers, Clue rules. Each bar is how often that seat won.",
   "seatNote": "Going first is worth about 7 points over a fair 25%: the first player gets the first question in.",
   "length": "With 4 players a game takes about 35 turns, so about 9 turns each. With the newer rules (2 dice, move up to the roll) it drops to about 20 turns."

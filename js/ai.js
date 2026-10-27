@@ -16,7 +16,11 @@ import { reach, PASSAGE, STEPS_TO_ROOM, ROOM_TO_ROOM } from "./board.js";
 export const LEVELS = ["Easy", "Medium", "Hard"];
 const cache = new Map();
 // Hard accuses once the most likely answer is at least this likely (a measured gamble; see tools/sim.js).
-const HARD_SURE = (typeof process !== "undefined" && process.env && process.env.CLUE_SURE) ? +process.env.CLUE_SURE : 0.8;
+// sim-only knobs (tools/sim.js sets them through the environment); the page always uses the defaults
+const ENV = (k, d) => (typeof process !== "undefined" && process.env && process.env[k] != null ? +process.env[k] : d);
+const HARD_SURE = ENV("CLUE_SURE", 0.7);
+// Hard reads an Easy or Medium computer's early questions (up to this turn) as naming cards it doesn't hold
+const K_MODEL = ENV("CLUE_MODEL", 24);
 
 /** Records with "shown" filled in from this seat's private notes. */
 export function recordsFor(pub, mine) {
@@ -65,7 +69,16 @@ export function beliefs(level, pub, mine, seat) {
       }
       out = { pEnv, answer: answer.every((c) => c >= 0) ? answer : null, allowed: pr && pr.allowed };
     } else {
-      const sol = solve(n, pub.sizes, facts, { budget: 150000, samples: 1200, thin: 30 });
+      // the Easy and Medium computers only name suspects and weapons they don't hold (until they've solved that
+      // kind of card), so Hard reads their questions that way too; it drops the idea if it contradicts what it has seen
+      let sol = null;
+      if (K_MODEL) {
+        const extra = [];
+        for (const r of pub.log) if (r.t === "suggest" && r.by !== seat && pub.kinds && pub.kinds[r.by] === "computer" && pub.opts.levels && pub.opts.levels[r.by] < 2 && r.turnNo <= K_MODEL)
+          for (const c of r.cards.slice(0, 2)) extra.push({ t: "not", p: r.by, c });
+        if (extra.length) { const s2 = solve(n, pub.sizes, facts.concat(extra), { budget: 150000, samples: 1200, thin: 30 }); if (s2.ok) sol = s2; }
+      }
+      if (!sol) sol = solve(n, pub.sizes, facts, { budget: 150000, samples: 1200, thin: 30 });
       const pEnv = sol.ok ? sol.prob.map((r) => r[n]) : new Array(21).fill(1 / 6);
       const top = sol.ok && sol.env[0];
       out = { pEnv, answer: top && top.p > HARD_SURE ? top.cards.slice() : null, sol };
@@ -149,7 +162,7 @@ export function botAction(ctx, seat, rng = Math.random) {
   }
   if (pub.phase === "move") {
     const blocked = new Set(); pub.pos.forEach((p, i) => { if (i !== me && p.sq != null) blocked.add(p.sq); });
-    const m = reach(place, pub.roll.total, blocked);
+    const m = reach(place, pub.roll.total, blocked, { upTo: !!pub.opts.upTo });
     let best = null, bestScore = -Infinity;
     for (const x of m.rooms) {
       const sc = value(x.room) + (level === 0 ? rng() * 0.3 : 0);

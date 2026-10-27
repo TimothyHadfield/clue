@@ -3,11 +3,11 @@
 
 // Elo of each level, from measured multi-player win rates turned into one-on-one odds
 // (a computer that wins share w against k others is s = w·k/(1−w) times as strong; p = s/(s+1)).
-// See data/strength.json. Easy is anchored at 1200, where every new player starts.
+// Measured 2026-10-27 (data/strength.json): Medium vs 3 Easy 76% → +390; Hard vs 3 Medium 41% → +130. Easy is anchored at 1200, where every new player starts.
 export const LEVELS = [
   { id: "easy", name: "Easy", rating: 1200 },
-  { id: "medium", name: "Medium", rating: 1580 },
-  { id: "hard", name: "Hard", rating: 1700 },
+  { id: "medium", name: "Medium", rating: 1590 },
+  { id: "hard", name: "Hard", rating: 1720 },
 ];
 export const LEVEL_IDS = ["easy", "medium", "hard"];
 

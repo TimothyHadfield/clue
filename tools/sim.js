@@ -19,7 +19,7 @@ for (let g = 0; g < N; g++) {
   let levels;
   if (matchup === "seat") levels = new Array(players).fill(1);
   else { const [a, b] = matchup.split("v").map(Number); levels = new Array(players).fill(b); levels[seat] = a; }
-  let s = game.setup(players, { levels, dice: R.dice, stay: R.stay, upTo: R.upTo }, rng, []);
+  let s = game.setup(players, { levels, dice: R.dice, stay: R.stay, upTo: R.upTo }, rng, levels.map(() => ({ kind: "computer" })));
   let steps = 0;
   while (!s.over && steps++ < 20000) {
     const who = game.toAct(s)[0];
