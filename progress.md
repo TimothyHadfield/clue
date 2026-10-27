@@ -1,7 +1,7 @@
 # Clue — progress
 
 ## START HERE
-Last updated 2026-10-21 (visibility pass: bigger board, zoom). Read in this order: this file, CLAUDE.md, docs/rules-check.md, docs/ideas.md, chat.md.
+Last updated 2026-10-27 (improve pass: kits, Undo, reveal, replay, achievements, Daily, stronger Hard). Read in this order: this file, CLAUDE.md, docs/rules-check.md, docs/ideas.md, chat.md.
 Live: https://timothyhadfield.github.io/clue/ · Repo: https://github.com/TimothyHadfield/clue
 
 ## Goal right now
@@ -22,6 +22,7 @@ Tim: "add risk, clue, battleship, connect four, stratego, clue, checkers, pandem
 | Sounds and effects 2026-10-20 | done: js/fx.js (shared copy of `_fx/fx.js`, never edit) + js/sfx.js (Clue's events → sounds). Settings → "Sound & effects". tests/fx.test.js |
 | Real-table look 2026-10-20 | done: wooden table (shared kit `css/table.css` + `js/table.js`, copies of `../_table`, never edit), board redrawn like the printed one (cream hallway, illustrated room floors, serif name plaques, stairs + CASE FILE envelope in the middle, door swings), glossy plastic pawns, pewter weapons, ivory dice, opponents as seats with fans of maroon card backs, your hand as a fan of real 57x89 cards, notes as a cream detective sheet. Cards are dealt face down off the envelope and turn up; shown / case-file cards turn over in 3-D. Laptop: table left, sheet right. Phone landscape: board left, rest right |
 | Visibility pass 2026-10-21 | done: board as big as the screen allows (phone 334→373 px wide, 320 px phone 248→300, landscape 308→363 with the tabs as a left rail, laptop 545→656 with the hand moved under the sheet). Zoom (js/zoom.js, SVG viewBox so taps stay exact): your move auto-zooms to the reachable area when squares are under 22 px; not your move, tap a room to look closer, tap again or the corner button for the whole board; pinch, drag, mouse wheel. Bigger weapons, room names, room odds. Check: `node tools/vis.mjs <url> [--engine chrome]` (25 screens) |
+| Improve pass 2026-10-27 | done: shared kits copied in (guided first game + rules sheet `_coach`, My stats / achievements / Daily `_profile`, install + offline `_pwa`, fx.js re-synced). Undo vs computers (6 deep, not in the Daily), case-file reveal scene (js/reveal.js), end-of-game Replay (frames saved with the game), 10 achievements + level ratings (js/clue-profile.js), guided game + rules (js/tutorial.js), suspect cards each get a prop. Hard stronger (see Decisions). Check: `node tools/improve.mjs <url> [--desktop] [--shots dir]` (5 checks), `node tools/pwa-check.mjs` (18) |
 | Edge pass 2026-10-20 | done: 47 weird situations listed and tested, 12 failed, all fixed (table below). Checks: `tests/edge.test.js` (engine), `node tools/edge.mjs <url>` (24 browser checks), `node tools/edge-online.mjs <url>` (3 browsers online) |
 
 ## Edge pass (2026-10-20): weird situations
@@ -68,7 +69,12 @@ Animations off adds `html.fx-still` (all CSS animations/transitions off) and tok
 - Never load `js/app.js?v=…`. A query string creates a second module instance and breaks the circular imports with "Cannot access 'root' before initialization". Shared helpers live in js/ui.js.
 - Native `<select>` renders white in WebKit unless `appearance: none` (fixed in style.css).
 - Several builders' local servers share this machine. Use an unusual port (47613 was used).
-- Hard's accuse threshold can be overridden with the env var `CLUE_SURE` (sims only).
+- Hard's accuse threshold (`CLUE_SURE`, default 0.7) and its reading of computers' questions (`CLUE_MODEL`, turns, default 24; 0 = off) can be overridden by env vars in sims only.
+- Kit copies are byte-identical and never edited here: js/fx.js, js/table.js, css/table.css, js/coach.js, css/coach.css, js/profile.js, css/profile.css, js/pwa.js, sw.js, tools/make-icons.mjs, tools/pwa-check.mjs (all `-text` in .gitattributes). Report kit bugs to the manager.
+- PWA: bump `?v=N` on the kit scripts/CSS and `data-version` on pwa.js together when shipping, so the service worker picks up the new build. `PWA.safeToReload` is only true on setup / finished game.
+- The guided game is seeded (`TUTORIAL.seed` in js/tutorial.js) and stacks your first rolls to reach the nearest room (`tutorialDice` in app.js). The Daily deals with `Profile.daily.rng(day)`.
+- A finished local game is counted once by `meta.id` (`counted:<id>` in storage); old saves without meta fall back to turn + case file.
+- Replay frames live in the saved game's `meta.frames` (max 800); only move / passage / suggestDone / accuse are recorded.
 - The solver speed test (worst solve under 3 s) fails when the machine is at 100% CPU from other builders. Rerun it when the machine is quiet.
 - Under load, creating an online room can take more than 20 s, so the test tools wait 60 s.
 - Back button: sheets and the phone Notes panel are history layers (pushLayer/popLayer in js/ui.js). `closeSheet` used as an onclick gets an event, which is why it checks `fromBack === true`.
@@ -94,7 +100,10 @@ Animations off adds `html.fx-still` (all CSS animations/transitions off) and tok
 - Turn order: seats are sorted in board order from Scarlet, which is clockwise.
 - Clue rules use 1 die, full roll in the hallway, and no staying in a room. Cluedo uses 2 dice and allows staying. Newer uses 2 dice, staying, and moving up to the roll.
 - The step from the doorway into the room costs 1 step, which matches "Peacock is 10 from the Billiard Room".
-- Hard accuses at 80% or more (measured better than 99.9%).
+- Hard accuses at 70% or more (2026-10-27; was 80%, which beat 99.9%). It also reads an Easy/Medium computer's questions in its first 24 turns as naming cards that computer doesn't hold (dropped if that contradicts what it has seen). That part never fires against people or other Hard computers, so against people only the 70% change helps (Hard vs 3 Medium without it: 35.9%).
+- 2026-10-27 ladder (2000 games, 4 players): Hard vs 3 Medium 41.1% (was 33.2%; about 68% one-on-one), Hard vs 2 Medium 49.8% (was 42.6%), Medium vs 3 Easy 76.2%, Hard vs 3 Easy 83.1%. Elo: Easy 1200, Medium 1590, Hard 1720.
+- 2026-10-27 tried and dropped for Hard (1000-game sweeps, none beat the baseline): valuing rooms by question bits, step cost 0.03/0.1, a lower bar when a rival's question went unanswered, one-roll look-ahead, showing people/weapons before rooms.
+- 2026-10-27 profile: Best question, Best guess and Undo make a game "with help" (unrated); the starred best pair and the odds shown by default do not. The guided game is always "with help". The Daily is 4 players, you as Scarlet, 3 Hard computers, Clue rules, no Undo. Quitting counts as a loss. The old W/L record was moved into My stats once (`pfMoved`).
 - The classic board is used for every edition's names.
 - Easy now knows one trick: if nobody could answer its own question, the cards it doesn't hold are the answer. Six Easy computers went from 379 to 96 turns. Medium beats 3 Easy 74.5% of the time (was 100%).
 - 2026-10-21 visibility: auto-zoom only below 22 px per square (phones, not laptops); zoom-out button bottom-left of the board, icon only; laptop hand sits under the notes (78 px cards), notes log capped at 17%.
@@ -107,6 +116,7 @@ Animations off adds `html.fx-still` (all CSS animations/transitions off) and tok
 - Edge pass (2026-10-20), reasoned only: a tab left in the background for 10 minutes (timers throttle, state is saved every move, so it resumes); a slow/dropped network online (handled inside shared online.js); a spectator with no seat; an online player who stays online but never acts (AFK) — nobody can hand that seat over, as at a real table. A phone returning from the background after the host gave its seat away can't reclaim it (online.js design); it now gets a message.
 - Online sounds: same code path as local (snapshot diff) but not run in a two-browser test.
 - Visibility pass (2026-10-21): pinch and drag only reasoned + synthetic; never done with real fingers. iPhone landscape notch padding (`env(safe-area-inset-*)`) is 0 headless, so the rail next to the notch is unchecked. Still small: at 320 px the seat chips read "M." / "W."; a 6-roll's auto-zoom has 17–19 px squares (it fits every lit square on screen; pinch for more); laptop die beside "You" is small; confetti covers the end sheet on phones.
+- Improve pass (2026-10-27): install to the home screen and offline play were checked only headless (pwa-check 18/18), never on Tim's iPhone. The coach bubbles were seen in headless Chrome only (WebKit's slow rAF). The reveal scene's sounds were never heard. No 2-player mode (Clue needs 3+; rivals' 2-player modes are house rules), so none was added.
 - The 2016+ board changes aren't modelled.
 - UK answering-to-the-right isn't modelled.
 - QA fixes checked by reading the code only, not clicked through: the notepad refusing "nobody showed" on a card you hold, room chips clearing after a contradiction, triple-tap Suggest logging once, emoji/long names in notepad headers.

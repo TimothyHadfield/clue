@@ -42,3 +42,18 @@
 - **Built:** js/fx.js (the shared copy) and js/sfx.js, which works out events from snapshot diffs and maps them to sounds (the map is in progress.md). Five Clue sounds were added: footstep, door creak, suggestion sting, "show a card" prompt and pencil scribble. Effects: hand cards fly in when the cards are dealt, a face-down card flies from the shower to the asker, the suggester's chip pulses, a wrong accusation shakes the chip, the bar flashes on your turn, sparkles appear when the notes crack the case, and the game ends with confetti or a lose dim. Settings has a "Sound & effects" panel. Animations off stops every CSS animation and the token walk.
 - **Verified:** `npm test` passes 26/26. The new tests/fx.test.js (5 tests) failed first because js/sfx.js didn't exist. phone-view at 393 px and on desktop covered Settings, mid-game and the win screen (scratchpad design/clue-fx/), with no console errors and no overflow; the game screen is still 659/659 with no page scroll. In Chrome, a full bot game after a wrong accusation gave 198 sound plays, 15 card flies, and the lose sheet.
 - **Open:** a person still has to listen to it on an iPhone.
+
+## 2026-10-27: improve pass (builder agent, manager's per-game brief)
+- **Asked:** the manager's improve brief, quoting Tim: "start building every single improvement you can think of after your competitor analysis" and "I want to make our boardgames the best in every single metric we can." It covered: the listed fixes, a stronger Hard (at least 65% one-on-one against Medium), rivals' variants, Undo, replay, a reveal scene, achievements, the shared kits (guided game, My stats, Daily, PWA), richer art, and no empty bands.
+- **Built:**
+  - **Kits copied in, byte-identical:** coach, profile, pwa, and fx re-synced.
+  - **New in the game:** a guided first game and a rules sheet, a My stats pill plus a Daily button on setup, and 10 achievements. Undo goes 6 moves deep and is not available in the Daily.
+  - **End of game:** a case-file reveal, then a Replay on the result sheet.
+  - **Art:** a prop for each suspect card.
+  - **Hard computer:** it accuses at 70%, and it reads other computers' early questions.
+  - **Reviewer fixes:** the result sheet after the reveal online, Undo dropping the question score, the counted-once key, a new game clearing the replay, and Back over the rules.
+- **Verified:**
+  - `npm test` 39/39. The new profile test failed on a broken `result()`.
+  - `tools/improve.mjs` 5/5 in WebKit, phone and desktop. `tools/edge.mjs` 24/24. `tools/pwa-check.mjs` 18/18.
+  - Sims (2000 games) are in data/strength.json.
+- **Open:** see progress.md NOT verified. Tim's calls are in the report.
