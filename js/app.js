@@ -185,7 +185,7 @@ function startDaily() {
 /** First visit: offer the guided first game once. */
 function offerTutorial() {
   if (!COACH || !tour || tour.seen() || COACH.offered("clue-first")) return;
-  COACH.offer({ id: "clue-first", title: "New to Clue?", text: "Play a guided first game against two easy computers.", yes: "Teach me", no: "No thanks", onYes: () => startTutorial() });
+  COACH.offer({ id: "clue-first", title: "New to Clue?", text: "Play a guided first game against two easy computers.", yes: "Teach me", no: "No thanks", onYes: () => startTutorial(), place: "auto", avoid: ["#go"] });
 }
 function startTutorial() {
   if (online && snapNow && snapNow.mode === "online") { toast("Leave the online room first"); return; }
