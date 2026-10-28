@@ -454,3 +454,8 @@ html.fx-still *, html.fx-still *::before, html.fx-still *::after { animation: no
 .coach-rules-body a { color: #2a4f9e; text-decoration: underline; }
 .coach-rules-body ul.vids { padding-left: 18px; margin: 6px 0; }
 .coach-rules-body ul.vids li { margin: 6px 0; }
+/* the coach's "New to Clue?" offer sits at the top, over the title, so it never covers the tab bar
+   or the Deal button (the kit puts it at the bottom) */
+.coach-offer { top: calc(8px + env(safe-area-inset-top)); bottom: auto; }
+.coach-offer.enter { animation: clue-offer-in .25s ease-out; }
+@keyframes clue-offer-in { from { opacity: 0; transform: translate(-50%, -10px); } }

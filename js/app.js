@@ -316,6 +316,9 @@ function onSnap(snap) {
   const first = !gameEl || snapNow && snapNow.pub && snapNow.pub.n !== snap.pub.n;
   const prev = snapNow;
   snapNow = snap;
+  // a Suggest sheet left open after your suggestion went through (online lag) has nothing left to do
+  const sug = $("#overlay.on .sheet[data-for='suggest']");
+  if (sug && !(snap.myTurn && (snap.pub.phase === "suggest" || (snap.pub.phase === "start" && canSuggestHere(snap.pub))))) closeSheet();
   if (first) {
     buildGame(snap);
     const up = snap.pub.faceUp || [];
@@ -720,7 +723,8 @@ function autoZoom(snap, m) {
   const key = m ? "m" + pub.turnNo + ":" + (pub.roll ? pub.roll.total : "") : "";
   if (key === zoomKey) return;
   zoomKey = key;
-  if (m && (m.squares.length || m.rooms.length) && zoom.unitPx() < SMALL_SQ) zoom.to(reachArea(pub, m), true);
+  // quick moves: only whole rooms to tap, so keep the whole board (zooming cut off lit rooms)
+  if (m && !pub.opts.quick && (m.squares.length || m.rooms.length) && zoom.unitPx() < SMALL_SQ) zoom.to(reachArea(pub, m), true);
   else if (!m && zoom.auto) zoom.reset();
 }
 function renderHighlights(snap) {
@@ -832,6 +836,7 @@ function suggestSheet(snap) {
     <div class="picker"><div class="label">Who</div><div class="chips" id="cs"></div><div class="label">With</div><div class="chips" id="cw"></div></div>
     <p id="qinfo" class="muted" style="min-height:20px;font-size:13px"></p>
     <div class="row"><button class="btn" id="sBest" ${best ? "" : "disabled"}>Best question</button>${help("Best question", "For every suspect and weapon you could name here, the notes work out what each player might show you and how much that would narrow down the case file, in bits. One bit halves the possible answers. The star is the most informative question.")}<span class="grow"></span><button class="btn primary" id="sGo" disabled>Suggest</button></div>`);
+  el.dataset.for = "suggest";   // onSnap closes it once suggesting is over (a second tap while online lags)
   const draw = () => {
     const bS = best && best.cards[0], bW = best && best.cards[1];
     $("#cs", el).innerHTML = [0, 1, 2, 3, 4, 5].map((c) => chip(c, c === pickS, c === bS ? "best" : "")).join("");

@@ -57,6 +57,8 @@ try {
     await page.waitForFunction(() => __clue.snap.myTurn && __clue.snap.pub.phase === "start", null, { timeout: 15000 });
     check(!(await page.$("#bRoll")), "quick moves: no Roll button");
     check(await page.evaluate(() => document.querySelectorAll(".room-hit.can").length === 9), "quick moves: all 9 rooms lit at the start of your turn");
+    await page.waitForTimeout(2500);   // headless WebKit zooms slowly
+    check(!(await page.isVisible("#zoomOut")), "quick moves: the board stays whole (no auto-zoom cutting off rooms)");
     await page.waitForFunction(() => document.querySelector("#notes th.pile"), null, { timeout: 15000 });
     check(await page.evaluate(() => document.querySelector("#notes th.pile").textContent === "Up"), "notes have an Up column");
     check(await page.evaluate(() => /Face up/.test(document.querySelector("#envline").textContent)), "notes list the face-up cards");
@@ -73,7 +75,7 @@ try {
     await page.evaluate(() => { localStorage.removeItem("clue.local"); });
 
     // 2 players
-    await page.goto(url);
+    await page.waitForLoadState("networkidle").catch(() => {}); await page.goto(url);   // a lazy module cut off mid-load logs "Importing a module script failed"
     await page.waitForFunction(() => window.__clue);
     await page.click('#pn button[data-n="2"]');
     await page.click("#go");
@@ -102,6 +104,38 @@ try {
     check(links.length === 4 && links.every((l) => /youtube\.com\/watch\?v=/.test(l.href) && l.t === "_blank" && /noopener/.test(l.rel)), "rules sheet: 4 YouTube videos open in a new tab");
     check(links.length > 0 && links[0].color === "rgb(42, 79, 158)", "video links are dark blue on the cream paper");
     if (SHOTS) await page.screenshot({ path: `${SHOTS}/videos-${width}.png` });
+
+    // Online lag: Suggest tapped again before your suggestion comes back. If nobody can show a card,
+    // nothing replaces that sheet, and it used to stay open with a dead Suggest button (found in the
+    // 2-player online run). Ask about cards you hold yourself, in a room whose card you hold, so nobody shows.
+    let hand = null;
+    for (let k = 0; k < 15 && !hand; k++) {
+      await page.evaluate(() => localStorage.removeItem("clue.local"));
+      await page.waitForLoadState("networkidle").catch(() => {}); await page.goto(url);
+      await page.waitForFunction(() => window.__clue);
+      await page.click('#pn button[data-n="2"]');
+      await page.click("#go");
+      await page.waitForFunction(() => __clue.snap && __clue.snap.pub && __clue.snap.pub.n === 2);
+      const h = await page.evaluate(() => __clue.snap.mine.hand);
+      const s = h.find((c) => c < 6), w = h.find((c) => c >= 6 && c < 12), r = h.find((c) => c >= 12);
+      if (s != null && w != null && r != null) hand = { s, w, room: r - 12 };
+    }
+    check(!!hand, "found a 2-player deal with a suspect, weapon and room in your hand");
+    if (hand) {
+      await page.waitForFunction(() => __clue.snap.myTurn && __clue.snap.pub.phase === "start", null, { timeout: 15000 });
+      await page.evaluate((r) => document.querySelector(`.room-hit[data-room="${r}"]`).dispatchEvent(new MouseEvent("click", { bubbles: true })), hand.room);
+      await page.waitForFunction(() => __clue.snap.pub.phase === "suggest", null, { timeout: 15000 });
+      await page.waitForSelector("#bSug", { state: "attached", timeout: 15000 });   // after the walk
+      await page.waitForTimeout(500);
+      await page.evaluate(() => { const c = document.querySelector("#overlay.on [data-close]"); if (c) c.click(); });   // the room card you looked at, if any
+      await page.evaluate(() => document.querySelector("#bSug").click());
+      await page.waitForSelector("#overlay.on #sGo");
+      await page.evaluate((h) => __clue.room.act({ type: "suggest", suspect: h.s, weapon: h.w }), hand);   // the first tap, arriving late
+      await page.waitForFunction(() => __clue.snap.pub.phase === "post", null, { timeout: 15000 });
+      await page.waitForTimeout(300);
+      check(await page.evaluate(() => __clue.snap.pub.last.shower == null), "nobody could show a card");
+      check(!(await page.$("#overlay.on #sGo")), "the leftover Suggest sheet closes once the suggestion is made");
+    }
     check(errs.length === 0, "no page errors" + (errs.length ? ": " + errs.join(" | ") : ""));
     await ctx.close();
   }

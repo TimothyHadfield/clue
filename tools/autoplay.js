@@ -26,15 +26,14 @@
       const ph = snap.pub.phase;
       if (ph === "start") {
         // quick moves: no Roll button, tap a lit room
-        if (!b("bSug")) if (!b("bPass")) if (!b("bRoll")) {
-          // quick moves: prefer a room card not yet looked at (2 players), else a random lit room
-          const lit = [...document.querySelectorAll(".room-hit.can")];
-          const looked = new Set((snap.mine.seen || []).filter((x) => x.i < 0).map((x) => x.room));
-          const fresh = lit.filter((r) => (snap.pub.hiddenRooms || []).includes(+r.dataset.room) && !looked.has(+r.dataset.room));
-          const pool = fresh.length ? fresh : lit;
-          const room = pool[Math.floor(Math.random() * pool.length)];
-          if (room) room.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-        }
+        // quick moves: go to a room card not yet looked at (2 players), else usually a random room
+        // (always taking the passage / "Suggest here" ping-pongs between two rooms and never learns more)
+        const lit = [...document.querySelectorAll(".room-hit.can")];
+        const looked = new Set((snap.mine.seen || []).filter((x) => x.i < 0).map((x) => x.room));
+        const fresh = lit.filter((r) => (snap.pub.hiddenRooms || []).includes(+r.dataset.room) && !looked.has(+r.dataset.room));
+        const pool = fresh.length || (lit.length && Math.random() < 0.7) ? (fresh.length ? fresh : lit) : null;
+        if (pool) pool[Math.floor(Math.random() * pool.length)].dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        else if (!b("bSug")) if (!b("bPass")) b("bRoll");
       }
       else if (ph === "move") {
         const room = q(".room-hit.can"); const sq = q(".reach");
