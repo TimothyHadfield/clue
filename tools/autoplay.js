@@ -43,7 +43,8 @@
       else if (ph === "suggest") b("bSug");
       else if (ph === "post") {
         const top = snap && document.querySelector("#envline b:last-child");
-        if (top && top.textContent === "100%") { b("bAcc"); await sleep(100); b("aTop"); await sleep(50); b("aGo"); }
+        // window.__autoAccuseAfter (tests): accuse the best guess after that turn so slow online games end
+        if (top && (top.textContent === "100%" || snap.pub.turnNo > (window.__autoAccuseAfter || Infinity))) { b("bAcc"); await sleep(100); b("aTop"); await sleep(50); b("aGo"); }
         else b("bEnd");
       }
     }

@@ -70,6 +70,8 @@ if (after.mySeat !== before.mySeat) fail("Bob came back in a different seat");
 if (after.pub.log.length < before.pub.log.length) fail("Bob's game went backwards after the reload");
 console.log("PASS Bob reloaded and is back in seat", after.mySeat, "at turn", after.pub.turnNo);
 
+// --two: online turns take ~5 s and 2-player games run long, so accuse the best guess after turn 16
+if (args.includes("--two")) for (const p of [A, B]) await p.evaluate(() => { window.__autoAccuseAfter = 16; });
 const [rA, rB] = await Promise.all([A.evaluate(auto), B.evaluate(auto)]);
 for (const p of [A, B]) await p.waitForFunction(() => window.__clue.snap.pub.over, null, { timeout: 60000 });
 const eA = await snap(A), eB = await snap(B);

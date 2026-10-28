@@ -57,3 +57,9 @@
   - `tools/improve.mjs` 5/5 in WebKit, phone and desktop. `tools/edge.mjs` 24/24. `tools/pwa-check.mjs` 18/18.
   - Sims (2000 games) are in data/strength.json.
 - **Open:** see progress.md NOT verified. Tim's calls are in the report.
+
+## 2026-10-28: wave 3 (builder agent under the classic manager)
+- **Asked:** Tim: "Go ahead and go through each project adding features or changing things that you think should be changed... common house rules... links to youtube videos... making the layout better on iphone... Just make the games better." Brief: house rules (off by default, sourced, computers handle them, ladder measured), a Videos section, practical settings if missing, an iPhone layout check.
+- **Built:** the official 2-player game (4 cards face down in rooms, look once by walking in); Settings → House rules: Leftovers face up, Quick moves; Rules sheet "House rules" + "Videos" (4 links). Solver "pile" owner for face-up/room cards; Hard drags its rival in 2-player. Layout: coach offer moved to the top (it covered the tab bar), quick moves no longer auto-zoom, a stale Suggest sheet closes after an online-lag double tap. Practical settings: already there (speed, animations, remembered setup, odds on/off, manual Notepad), none added.
+- **Verified:** `npm test` (44 node + quit + house browser at 393/320; new tests seen failing on the old code), 7 node runs clean (no flake), house browser 6/6 after the networkidle fix. tools/edge.mjs 24/24, pwa-check 18/18, two-browsers online 4-player and `--two` (2-player quick) both pass. Layout script at 393, 320, 659x393, 1280, 1440: no overflow, offer covers neither tabs nor Deal. Ladder sims in data/strength.json.
+- **Open:** see progress.md NOT verified.

@@ -1,7 +1,7 @@
 # Clue — progress
 
 ## START HERE
-Last updated 2026-10-27 (follow-up: the guided game never counts in My stats or the W/L record, even when quit (`recordLocal` returns for `meta.tutorial`); quitting a normal game vs computers was already a loss; `tests/quit.browser.mjs` (WebKit 393, in `npm test`, seen failing on the old build: 2 games); build 11. Before that, improve pass: kits, Undo, reveal, replay, achievements, Daily, stronger Hard). Read in this order: this file, CLAUDE.md, docs/rules-check.md, docs/ideas.md, chat.md.
+Last updated 2026-10-28 (wave 3: the official 2-player game, Settings → House rules (Leftovers face up, Quick moves), Rules sheet "House rules" + "Videos"; build 14. Before that: guided game never counts in My stats; improve pass: kits, Undo, reveal, replay, achievements, Daily, stronger Hard). Read in this order: this file, CLAUDE.md, docs/rules-check.md, docs/ideas.md, chat.md.
 Live: https://timothyhadfield.github.io/clue/ · Repo: https://github.com/TimothyHadfield/clue
 
 ## Goal right now
@@ -23,6 +23,7 @@ Tim: "add risk, clue, battleship, connect four, stratego, clue, checkers, pandem
 | Real-table look 2026-10-20 | done: wooden table (shared kit `css/table.css` + `js/table.js`, copies of `../_table`, never edit), board redrawn like the printed one (cream hallway, illustrated room floors, serif name plaques, stairs + CASE FILE envelope in the middle, door swings), glossy plastic pawns, pewter weapons, ivory dice, opponents as seats with fans of maroon card backs, your hand as a fan of real 57x89 cards, notes as a cream detective sheet. Cards are dealt face down off the envelope and turn up; shown / case-file cards turn over in 3-D. Laptop: table left, sheet right. Phone landscape: board left, rest right |
 | Visibility pass 2026-10-21 | done: board as big as the screen allows (phone 334→373 px wide, 320 px phone 248→300, landscape 308→363 with the tabs as a left rail, laptop 545→656 with the hand moved under the sheet). Zoom (js/zoom.js, SVG viewBox so taps stay exact): your move auto-zooms to the reachable area when squares are under 22 px; not your move, tap a room to look closer, tap again or the corner button for the whole board; pinch, drag, mouse wheel. Bigger weapons, room names, room odds. Check: `node tools/vis.mjs <url> [--engine chrome]` (25 screens) |
 | Improve pass 2026-10-27 | done: shared kits copied in (guided first game + rules sheet `_coach`, My stats / achievements / Daily `_profile`, install + offline `_pwa`, fx.js re-synced). Undo vs computers (6 deep, not in the Daily), case-file reveal scene (js/reveal.js), end-of-game Replay (frames saved with the game), 10 achievements + level ratings (js/clue-profile.js), guided game + rules (js/tutorial.js), suspect cards each get a prop. Hard stronger (see Decisions). Check: `node tools/improve.mjs <url> [--desktop] [--shots dir]` (5 checks), `node tools/pwa-check.mjs` (18) |
+| Wave 3 2026-10-28 | done: **2 players** (official H2016/H2023 rules: 4 cards face down in 4 rooms, walk in to look once; board card-back markers, notes "Rm" column), **Settings → House rules** (Leftovers face up: 4/5 players get equal hands, spares shown, notes "Up" column; Quick moves: no dice, go to any room), both off by default and never in the Daily/guided game, also online. Rules sheet gains "House rules" and "Videos" (4 YouTube links, oembed-checked). Ladder per option in data/strength.json `house`. Checks: `tests/house.test.js`, `tests/house.browser.mjs` (both in `npm test`), `node tools/two-browsers.mjs <url> --two` (online 2-player quick) |
 | Edge pass 2026-10-20 | done: 47 weird situations listed and tested, 12 failed, all fixed (table below). Checks: `tests/edge.test.js` (engine), `node tools/edge.mjs <url>` (24 browser checks), `node tools/edge-online.mjs <url>` (3 browsers online) |
 
 ## Edge pass (2026-10-20): weird situations
@@ -96,6 +97,12 @@ Animations off adds `html.fx-still` (all CSS animations/transitions off) and tok
 - Board zoom changes the SVG `viewBox` (js/zoom.js); never zoom with CSS transforms, taps and the token walk rely on SVG units. The svg has `touch-action: none` (pinch/drag are ours). A drag or pinch swallows the following click.
 - Headless WebKit runs requestAnimationFrame at a few frames a second, so zoom animations there take seconds: tests wait for `#zoomOut` hidden/shown, never a fixed sleep.
 - A finished game is never resumed from storage; tools/vis.mjs reaches the end screen by accusing correctly through `window.__clue.act`.
+- **Pile owner (2026-10-28):** face-up leftovers and 2-player room cards are one extra owner for the solver (`seatView` in js/knowledge.js): solver owners are players 0..n-1, pile n, case file n+1; `toTable` swaps them back so the UI always reads the case file at column n and the pile at n+1. `rankSuggestions` gets `players` so the pile never answers. A peek is stored in `mine.seen` as `{i:-1, from:-1, card, room}`; `recordsFor` and `shownCount` skip it.
+- Hard's "drag the rival" question choice (`CLUE_SUMMON`, 0.15 bits) is gated to `pub.n === 2`; it gave nothing in 4-player. Computers accuse their best guess after turn 400 (`STALL`) so a game can never loop.
+- Quick moves: `move` at phase "start" validates before touching state (an early version set `roll` and then threw, which looked like "you already moved").
+- Online 2-human tests are slow (~5 s a turn through Firestore); `tools/autoplay.js` visits unseen room cards / random rooms under quick moves (passage ping-pong never finished), and `--two` sets `window.__autoAccuseAfter = 16` so the robots accuse their best guess and the run ends in ~5 min.
+- The "New to Clue?" coach offer is moved to the top in style.css (the kit puts it at the bottom, over the tab bar). A Suggest sheet carries `data-for="suggest"`; onSnap closes it once suggesting is no longer possible. Quick moves never auto-zoom.
+- tests/house.browser.mjs waits for `networkidle` before each `goto` (a lazy module cut off mid-load logged "Importing a module script failed", 1 run in 5).
 - Online test tools run from `http://localhost:<port>/` (Firebase works there); `127.0.0.1` is fine for local-only checks.
 
 ## Decisions
@@ -109,6 +116,8 @@ Animations off adds `html.fx-still` (all CSS animations/transitions off) and tok
 - The classic board is used for every edition's names.
 - Easy now knows one trick: if nobody could answer its own question, the cards it doesn't hold are the answer. Six Easy computers went from 379 to 96 turns. Medium beats 3 Easy 74.5% of the time (was 100%).
 - 2026-10-21 visibility: auto-zoom only below 22 px per square (phones, not laptops); zoom-out button bottom-left of the board, icon only; laptop hand sits under the notes (78 px cards), notes log capped at 17%.
+- 2026-10-28 house rules: picked 2-player (official), leftovers face up (2011 box) and quick moves ("Speed Moves", read as "any room"). Not added: suggest from anywhere, accuse only in the centre (reasons in docs/rules-check.md). Practical settings audit: speed, animations, remembered setup, odds and the manual Notepad already exist, so no new ones.
+- 2026-10-28 ladder: 2 players Hard vs Medium 68% (was 50%), Medium vs Easy 75%; face up 4p Hard vs 3 Medium 41.8%, 5p 32.2%; quick 4p 54.3%; Medium vs Easy 76–80% under every option.
 - On narrow phones with 5 or 6 players, the player chips show 2 letters ("Me", "Mu") and hide the card count (it's in the chip's tooltip).
 
 ## NOT verified
@@ -118,7 +127,8 @@ Animations off adds `html.fx-still` (all CSS animations/transitions off) and tok
 - Edge pass (2026-10-20), reasoned only: a tab left in the background for 10 minutes (timers throttle, state is saved every move, so it resumes); a slow/dropped network online (handled inside shared online.js); a spectator with no seat; an online player who stays online but never acts (AFK) — nobody can hand that seat over, as at a real table. A phone returning from the background after the host gave its seat away can't reclaim it (online.js design); it now gets a message.
 - Online sounds: same code path as local (snapshot diff) but not run in a two-browser test.
 - Visibility pass (2026-10-21): pinch and drag only reasoned + synthetic; never done with real fingers. iPhone landscape notch padding (`env(safe-area-inset-*)`) is 0 headless, so the rail next to the notch is unchecked. Still small: at 320 px the seat chips read "M." / "W."; a 6-roll's auto-zoom has 17–19 px squares (it fits every lit square on screen; pinch for more); laptop die beside "You" is small; confetti covers the end sheet on phones.
-- Improve pass (2026-10-27): install to the home screen and offline play were checked only headless (pwa-check 18/18), never on Tim's iPhone. The coach bubbles were seen in headless Chrome only (WebKit's slow rAF). The reveal scene's sounds were never heard. No 2-player mode (Clue needs 3+; rivals' 2-player modes are house rules), so none was added.
+- Improve pass (2026-10-27): install to the home screen and offline play were checked only headless (pwa-check 18/18), never on Tim's iPhone. The coach bubbles were seen in headless Chrome only (WebKit's slow rAF). The reveal scene's sounds were never heard. (2-player mode was added 2026-10-28 from the official H2016/H2023 rules.)
+- Wave 3 (2026-10-28): the Notepad tab (real-table helper) has no 2-player or face-up support. House rules never seen on a real iPhone. Video links checked by oembed, not watched.
 - The 2016+ board changes aren't modelled.
 - UK answering-to-the-right isn't modelled.
 - QA fixes checked by reading the code only, not clicked through: the notepad refusing "nobody showed" on a card you hold, room chips clearing after a contradiction, triple-tap Suggest logging once, emoji/long names in notepad headers.
