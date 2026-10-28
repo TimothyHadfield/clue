@@ -10,7 +10,8 @@
  * ==========================================================================*/
 
 import { propagate, solve, rankSuggestions, CAT_CARDS } from "./solver.js";
-import { factsFor } from "./knowledge.js";
+import { seatView, recordsFor } from "./knowledge.js";
+export { recordsFor };
 import { reach, PASSAGE, STEPS_TO_ROOM, ROOM_TO_ROOM } from "./board.js";
 
 export const LEVELS = ["Easy", "Medium", "Hard"];
@@ -22,11 +23,6 @@ const HARD_SURE = ENV("CLUE_SURE", 0.7);
 // Hard reads an Easy or Medium computer's early questions (up to this turn) as naming cards it doesn't hold
 const K_MODEL = ENV("CLUE_MODEL", 24);
 
-/** Records with "shown" filled in from this seat's private notes. */
-export function recordsFor(pub, mine) {
-  const shown = new Map((mine.seen || []).map((x) => [x.i, x.card]));
-  return pub.log.map((r, i) => (r.t === "suggest" && shown.has(i) ? Object.assign({}, r, { shown: shown.get(i) }) : r));
-}
 
 /**
  * What this seat believes. Returns
@@ -43,7 +39,7 @@ export function beliefs(level, pub, mine, seat) {
     out = { pEnv: Array.from({ length: 21 }, (_, c) => (mine.env.includes(c) ? 1 : 0)), answer: mine.env.slice() };
   } else if (level === 0) {
     // only cards in hand or seen
-    const known = new Set(mine.hand.concat((mine.seen || []).map((x) => x.card)));
+    const known = new Set(mine.hand.concat((mine.seen || []).map((x) => x.card), pub.faceUp || []));
     // the one trick a beginner knows: if nobody could answer my question, the cards I don't hold are the answer
     const sure = new Set();
     for (const r of pub.log) if (r.t === "suggest" && r.by === seat && r.shower == null) for (const c of r.cards) if (!mine.hand.includes(c)) sure.add(c);
@@ -57,13 +53,14 @@ export function beliefs(level, pub, mine, seat) {
     }
     out = { pEnv, answer: answer.every((c) => c >= 0) ? answer : null };
   } else {
-    const facts = factsFor(seat, n, mine.hand, recordsFor(pub, mine));
+    // face-up leftovers / 2-player room cards are one more pile (owner K.n - 1); the case file is owner K.n
+    const K = seatView(pub, mine, seat), facts = K.facts, EN = K.n;
     if (level === 1) {
-      const pr = propagate(n, pub.sizes, facts);
+      const pr = propagate(EN, K.sizes, facts);
       const pEnv = new Array(21).fill(0);
       let answer = [];
       for (const cat of CAT_CARDS) {
-        const poss = cat.filter((c) => pr && (pr.allowed[c] & (1 << n)));
+        const poss = cat.filter((c) => pr && (pr.allowed[c] & (1 << EN)));
         for (const c of poss) pEnv[c] = 1 / poss.length;
         answer.push(poss.length === 1 ? poss[0] : -1);
       }
@@ -76,10 +73,11 @@ export function beliefs(level, pub, mine, seat) {
         const extra = [];
         for (const r of pub.log) if (r.t === "suggest" && r.by !== seat && pub.kinds && pub.kinds[r.by] === "computer" && pub.opts.levels && pub.opts.levels[r.by] < 2 && r.turnNo <= K_MODEL)
           for (const c of r.cards.slice(0, 2)) extra.push({ t: "not", p: r.by, c });
-        if (extra.length) { const s2 = solve(n, pub.sizes, facts.concat(extra), { budget: 150000, samples: 1200, thin: 30 }); if (s2.ok) sol = s2; }
+        if (extra.length) { const s2 = solve(EN, K.sizes, facts.concat(extra), { budget: 150000, samples: 1200, thin: 30 }); if (s2.ok) sol = s2; }
       }
-      if (!sol) sol = solve(n, pub.sizes, facts, { budget: 150000, samples: 1200, thin: 30 });
-      const pEnv = sol.ok ? sol.prob.map((r) => r[n]) : new Array(21).fill(1 / 6);
+      if (!sol) sol = solve(EN, K.sizes, facts, { budget: 150000, samples: 1200, thin: 30 });
+      sol.players = n;   // the pile never answers a question
+      const pEnv = sol.ok ? sol.prob.map((r) => r[EN]) : new Array(21).fill(1 / 6);
       const top = sol.ok && sol.env[0];
       out = { pEnv, answer: top && top.p > HARD_SURE ? top.cards.slice() : null, sol };
     }
@@ -90,7 +88,15 @@ export function beliefs(level, pub, mine, seat) {
 
 const pick = (arr, rng) => arr[Math.floor(rng() * arr.length)];
 
-function roomValue(level, B, mine, room) {
+function roomValue(level, B, mine, room, pub) {
+  // 2 players: a room whose face-down card you haven't looked at yet is worth a visit
+  const peekable = pub && pub.hiddenRooms && pub.hiddenRooms.includes(room) && !(mine.seen || []).some((x) => x.i < 0 && x.room === room);
+  return roomValue0(level, B, mine, room) + (peekable ? (level === 0 ? 0.5 : PEEK) : 0);
+}
+const SUMMON_BITS = ENV("CLUE_SUMMON", 0.15);   // 2 players: bits Hard gives up to drag its rival's pawn
+const STALL = 400;   // turns
+const PEEK = ENV("CLUE_PEEK", 2);
+function roomValue0(level, B, mine, room) {
   const rc = 12 + room;
   const roomSolved = CAT_CARDS[2].some((c) => B.pEnv[c] > 0.999);
   if (roomSolved) return 1;                       // any room works for asking about people and weapons
@@ -119,7 +125,16 @@ function chooseSuggestion(level, B, pub, mine, seat, room, rng) {
   for (const s of sus) for (const w of wep) cands.push([s, w, 12 + room]);
   const ranked = rankSuggestions(B.sol, seat, cands, rng, 250);
   const best = ranked[0].bits;
-  const top = ranked.filter((x) => x.bits >= best - 1e-9);
+  // 2 players: naming your rival's own suspect drags their pawn away from where they were heading.
+  // Measured (2-player, 1000 games): Hard vs Medium 49.8% → 68% when it does so within 0.15 bits of the best question.
+  // With 3+ players it made no difference, so the base game is unchanged.
+  let pool = ranked;
+  if (pub.n === 2) {
+    const rival = pub.chars[1 - seat];
+    const drag = pub.out[1 - seat] ? [] : ranked.filter((x) => x.cards[0] === rival && x.bits >= best - SUMMON_BITS);
+    if (drag.length) pool = drag;
+  }
+  const top = pool.filter((x) => x.bits >= pool[0].bits - 1e-9);
   const c = pick(top, rng).cards;
   return { suspect: c[0], weapon: c[1] };
 }
@@ -142,27 +157,34 @@ export function botAction(ctx, seat, rng = Math.random) {
   const level = pub.opts.levels && pub.opts.levels[seat] != null ? pub.opts.levels[seat] : 1;
   if (pub.phase === "disprove") return { type: "show", card: chooseShow(level, pub, mine, rng) };
   const B = beliefs(level, pub, mine, seat);
+  // a game that has gone on far too long: name the likeliest answer rather than wander for ever
+  if (!B.answer && pub.turnNo > STALL) {
+    const best = CAT_CARDS.map((cat) => cat.reduce((x, c) => (B.pEnv[c] > B.pEnv[x] ? c : x), cat[0]));
+    return { type: "accuse", suspect: best[0], weapon: best[1], room: best[2] - 12 };
+  }
   if (B.answer) return { type: "accuse", suspect: B.answer[0], weapon: B.answer[1], room: B.answer[2] - 12 };
   const me = pub.chars[seat];
   const place = pub.pos[me];
-  const value = (r) => roomValue(level, B, mine, r);
+  const value = (r) => roomValue(level, B, mine, r, pub);
+  const quick = !!pub.opts.quick;
 
   if (pub.phase === "start") {
     if (pub.summoned[seat] && place.room != null && value(place.room) >= 0.5) {
       return Object.assign({ type: "suggest" }, chooseSuggestion(level, B, pub, mine, seat, place.room, rng));
     }
-    if (place.room != null && PASSAGE[place.room] >= 0 && level > 0) {
+    if (place.room != null && PASSAGE[place.room] >= 0 && level > 0 && !quick) {
       // take the passage when that room is worth at least as much as what a roll is likely to reach
       const other = PASSAGE[place.room];
       let bestRoll = 0;
       for (let r = 0; r < 9; r++) if (r !== place.room) bestRoll = Math.max(bestRoll, value(r) - 0.06 * ROOM_TO_ROOM[place.room][r]);
       if (value(other) >= bestRoll) return { type: "passage" };
     }
-    return { type: "roll" };
+    if (!quick) return { type: "roll" };
   }
-  if (pub.phase === "move") {
+  if (pub.phase === "move" || (quick && pub.phase === "start")) {
     const blocked = new Set(); pub.pos.forEach((p, i) => { if (i !== me && p.sq != null) blocked.add(p.sq); });
-    const m = reach(place, pub.roll.total, blocked, { upTo: !!pub.opts.upTo });
+    // quick moves: no dice, any room but this one
+    const m = quick ? { squares: [], rooms: [...Array(9).keys()].filter((r) => r !== place.room).map((room) => ({ room })) } : reach(place, pub.roll.total, blocked, { upTo: !!pub.opts.upTo });
     let best = null, bestScore = -Infinity;
     for (const x of m.rooms) {
       const sc = value(x.room) + (level === 0 ? rng() * 0.3 : 0);

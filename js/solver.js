@@ -328,7 +328,7 @@ export function answerer(owner, n, suggester, cards) {
  * candidates: [[s,w,r], ...]. Returns [{cards, bits}] best first.
  */
 export function rankSuggestions(sol, me, candidates, rng, nSamples = 600) {
-  const n = sol.n;
+  const n = sol.n, players = sol.players || n;
   const samples = [];
   for (let i = 0; i < nSamples; i++) samples.push(sol.sample(rng));
   const envKey = (o) => {
@@ -344,7 +344,7 @@ export function rankSuggestions(sol, me, candidates, rng, nSamples = 600) {
   for (const cards of candidates) {
     const byOutcome = new Map();
     samples.forEach((o, i) => {
-      const a = answerer(o, n, me, cards);
+      const a = answerer(o, players, me, cards);   // a pile of cards on the table (owner n - 1) never answers
       if (!a) { add("none", keys[i], 1); return; }
       // the answerer picks one of the held cards; assume each equally likely
       for (const c of a.held) add(a.p + ":" + c, keys[i], 1 / a.held.length);

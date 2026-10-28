@@ -8,8 +8,8 @@ import { cardSvg, cardBackHtml, weaponSvg, roomSvg, pawnSvg, dieHtml, logoSvg } 
 import { boardSvg, roomHitPaths, placeXY, tokenSvg, weaponPieceSvg, walkPath, ROOMS } from "./boardview.js";
 import { reach, PASSAGE, idx, rc, DOOR_LIST, STEPS_TO_ROOM } from "./board.js";
 import { makeZoom } from "./zoom.js";
-import { factsFor, handSizes } from "./knowledge.js";
-import { recordsFor, LEVELS } from "./ai.js";
+import { seatView, toTable } from "./knowledge.js";
+import { LEVELS } from "./ai.js";
 import { initNotepad, refreshNotepad } from "./notepad.js";
 import { $, $$, esc, store, settings, saveSettings, toast, sheet, closeSheet, sheetOpen, pushLayer, popLayer, takeOwnBack, pct, heat, help, askSolver } from "./ui.js";
 import { initLearn } from "./learn.js";
@@ -146,7 +146,7 @@ function setupView() {
   play.innerHTML = `<div class="setup-wrap">
     <div class="hero">${logoSvg()}<p>Find who, with what, and where — first.</p></div>
     <div class="panel stack">
-      <div><div class="label">Players</div><div class="seg" id="pn">${[3, 4, 5, 6].map((k) => `<button data-n="${k}" class="${k === n ? "on" : ""}">${k}</button>`).join("")}</div></div>
+      <div><div class="label">Players ${help("Two players", "With 2 players, four cards lie face down in four rooms (the official 2-player rules). Walk into one of those rooms to look at its card.")}</div><div class="seg" id="pn">${[2, 3, 4, 5, 6].map((k) => `<button data-n="${k}" class="${k === n ? "on" : ""}">${k}</button>`).join("")}</div></div>
       <div><div class="label">You are</div><div class="who" id="pme">${[0, 1, 2, 3, 4, 5].map((s) => `<button data-s="${s}" class="${s === settings.me ? "on" : used.includes(s) ? "" : "off"}">${pawnSvg(s, 30)}${E().short[s]}</button>`).join("")}</div></div>
       <div><div class="label">Computers ${help("How strong are they?", "Easy only crosses off cards it is shown. Medium reasons like a careful player with a pencil. Hard counts every possible deal and asks the question that teaches it the most. Win rates are on the Learn tab.")}</div>
         <div class="seg" id="plv">${LEVELS.map((l, i) => `<button data-l="${i}" class="${i === settings.level ? "on" : ""}">${l}</button>`).join("")}</div></div>
@@ -207,7 +207,9 @@ function openRules(open) {
 function gameOptions(chars, fixed = {}) {
   const R = RULESETS[fixed.rules || settings.rules] || RULESETS.classic;
   const lv = fixed.level != null ? fixed.level : settings.level;
-  return { chars, dice: R.dice, stay: R.stay, upTo: R.upTo, edition: settings.edition, levels: chars.map(() => lv) };
+  // house rules (Settings) apply to normal games, never to the Daily or the guided game
+  const house = fixed.rules ? {} : { faceUp: !!settings.faceUp, quick: !!settings.quick };
+  return Object.assign({ chars, dice: R.dice, stay: R.stay, upTo: R.upTo, edition: settings.edition, levels: chars.map(() => lv) }, house);
 }
 /** Guided game: each of your first rolls is just enough to reach the nearest room (or a 6). */
 function tutorialDice(st, rng) {
@@ -275,7 +277,7 @@ document.addEventListener("visibilitychange", () => { if (document.visibilitySta
 function validSave(sv) {
   try {
     const st = sv && sv.state, n = st && st.n;
-    return Array.isArray(sv.seats) && Number.isInteger(n) && n >= 3 && n <= 6 && sv.seats.length === n && sv.seats.some((x) => x && x.kind === "human")
+    return Array.isArray(sv.seats) && Number.isInteger(n) && n >= 2 && n <= 6 && sv.seats.length === n && sv.seats.some((x) => x && x.kind === "human")
       && ["hands", "chars", "sizes", "seen", "showed", "out", "envSeen", "summoned"].every((k) => Array.isArray(st[k]) && st[k].length === n)
       && Array.isArray(st.pos) && st.pos.length === 6 && Array.isArray(st.env) && st.env.length === 3
       && Array.isArray(st.weaponRoom) && st.weaponRoom.length === 6 && Array.isArray(st.log) && typeof st.phase === "string"
@@ -314,7 +316,11 @@ function onSnap(snap) {
   const first = !gameEl || snapNow && snapNow.pub && snapNow.pub.n !== snap.pub.n;
   const prev = snapNow;
   snapNow = snap;
-  if (first) buildGame(snap);
+  if (first) {
+    buildGame(snap);
+    const up = snap.pub.faceUp || [];
+    if (up.length && snap.pub.turnNo === 1 && !snap.pub.log.length) toast(`Face up for everyone: ${up.map(sname).join(", ")}`, 3500);
+  }
   animating = animating.then(() => renderGame(snap, prev, true)).catch((e) => console.error(e));
 }
 
@@ -450,7 +456,7 @@ async function renderGame(snap, prev, fresh) {
     const blocked = new Set(); pp.pos.forEach((p, i) => { if (i !== sus && p.sq != null) blocked.add(p.sq); });
     const path = walkPath(pp.pos[sus], pub.pos[sus], blocked);
     const el = $(`.tok[data-s="${sus}"]`, gameEl);
-    const stepMs = 110 / settings.speed;
+    const stepMs = (pub.opts.quick ? Math.min(110, 1400 / Math.max(1, path.length)) : 110) / settings.speed;   // quick moves cross the board in about 1.4 s
     el.style.transition = `transform ${stepMs}ms linear`;
     for (const sq of path) { const [r, c] = rc(sq); setXY(el, { x: c + 0.5, y: r + 0.5 }); await wait(stepMs); }
     el.style.transition = "";
@@ -541,9 +547,16 @@ function announce(snap, prev) {
   } else if (L.t === "passage" && L.by !== snap.mySeat) {
     bubble(L.by, "Secret passage");
   }
+  // 2 players: you walked into a room with a face-down card (only you see it)
+  if (L.peek && (L.t === "move" || L.t === "passage")) {
+    if (L.by === snap.mySeat) {
+      const pk = (snap.mine.seen || []).find((x) => x.i < 0 && x.room === L.room);
+      if (pk) revealCard("The " + E().rooms[L.room], pk.card, "card");
+    } else bubble(L.by, "Looks at the room card");
+  }
 }
-function revealCard(who, c) {
-  sheet(`<h3>${esc(who)} showed you</h3><div class="row" style="justify-content:center;margin:8px 0"><div class="cardf lg turnup">${cardSvg(settings.edition, c)}${cardBackHtml()}</div></div><div class="row" style="justify-content:flex-end"><button class="btn primary" data-close>Got it</button></div>`,
+function revealCard(who, c, how) {
+  sheet(`<h3>${how === "card" ? `${esc(who)}'s face-down card` : `${esc(who)} showed you`}</h3><div class="row" style="justify-content:center;margin:8px 0"><div class="cardf lg turnup">${cardSvg(settings.edition, c)}${cardBackHtml()}</div></div><div class="row" style="justify-content:flex-end"><button class="btn primary" data-close>Got it</button></div>`,
     (el) => { $("[data-close]", el).onclick = closeSheet; });
 }
 
@@ -559,6 +572,8 @@ function renderLog(pub) {
 
 // ------------------------------------------------------------------ the action bar
 function myTurnPhase(snap) { return snap.myTurn ? snap.pub.phase : null; }
+/** Your token can move now: after a roll, or (quick moves) at the start of your turn. */
+function canMoveNow(snap) { const ph = myTurnPhase(snap); return ph === "move" || (ph === "start" && !!snap.pub.opts.quick); }
 function renderBar(snap) {
   if (rp && gameEl && gameEl.classList.contains("replaying")) { drawReplay(); return; }
   const pub = snap.pub, bar = $("#bar");
@@ -576,11 +591,13 @@ function renderBar(snap) {
   } else if (ph === "start") {
     const where = place.room != null ? ` · in the ${esc(E().rooms[place.room])}` : "";
     msg = `Your turn${where}`;
-    acts = `<button class="btn primary" id="bRoll"><span class="rolldie">${dieHtml(5)}</span>Roll</button>`;
+    // quick moves: no dice, tap any lit room
+    acts = pub.opts.quick ? "" : `<button class="btn primary" id="bRoll"><span class="rolldie">${dieHtml(5)}</span>Roll</button>`;
+    if (pub.opts.quick) msg += ` <span class="sub">Tap a room</span>`;
     if (canPassage(pub)) acts += `<button class="btn" id="bPass">Passage → ${esc(E().rooms[PASSAGE[place.room]])}</button>`;
     if (canSuggestHere(pub)) acts += `<button class="btn warm" id="bSug">Suggest here</button>`;
     acts += `<button class="btn" id="bAcc">Accuse</button>`;
-    if (settings.odds) msg += ` <span class="sub" id="reachOdds"></span>`;
+    if (settings.odds && !pub.opts.quick) msg += ` <span class="sub" id="reachOdds"></span>`;
   } else if (ph === "move") {
     msg = `${dice(pub.roll)} <span>Pick a lit square or room</span>`;
     acts = `<button class="btn" id="bAcc">Accuse</button>`;
@@ -613,7 +630,7 @@ function renderBar(snap) {
   on("bNew", () => { if (snap.mode === "local" && room && room.meta && pub.reveal) recordLocal(pub.turnNo, pub.reveal.env, pub.winner === me, room.meta, room.state); store.del("local"); if (room && room.close) room.close(); if (online && snap.mode === "online") online.leave(); setupView(); });
   on("bSum", () => gameOver(snap));
   if (ph === "disprove" && !$("#overlay").classList.contains("on")) showSheet(snap);
-  if (ph === "start" && settings.odds) reachOdds(pub, place);
+  if (ph === "start" && settings.odds && !pub.opts.quick) reachOdds(pub, place);
 }
 // your hand: held as a fan of real cards along the bottom edge (rebuilt only when the cards change)
 let handKey = "", handApi = null;
@@ -665,7 +682,7 @@ async function act(a) {
 function onBoardClick(e) {
   const snap = snapNow;
   if (!snap) return;
-  if (myTurnPhase(snap) !== "move") { lookCloser(e); return; }
+  if (!canMoveNow(snap)) { lookCloser(e); return; }
   const t = e.target.closest("[data-sq],[data-room]");
   if (!t) { FX.play("error"); return; }   // a square you can't reach this turn
   if (t.dataset.sq != null) act({ type: "move", sq: +t.dataset.sq });
@@ -711,7 +728,7 @@ function renderHighlights(snap) {
   const L = $(".reachL", svg);
   $$(".room-hit", svg).forEach((h) => h.classList.remove("can"));
   let m = null;
-  if (myTurnPhase(snap) !== "move") { L.innerHTML = ""; }
+  if (!canMoveNow(snap)) { L.innerHTML = ""; }
   else {
     m = movesFor(pub);
     // the whole square takes the tap (the lit tile is drawn a little smaller)
@@ -719,6 +736,16 @@ function renderHighlights(snap) {
     for (const x of m.rooms) $(`.room-hit[data-room="${x.room}"]`, svg).classList.add("can");
   }
   autoZoom(snap, m);
+  // 2 players: a small face-down card in each room that holds one (a tick once you've looked)
+  $$(".hidcard", svg).forEach((x) => x.remove());
+  for (const r of pub.hiddenRooms || []) {
+    const R = ROOMS[r], looked = snap.mine && (snap.mine.seen || []).some((x) => x.i < 0 && x.room === r);
+    const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
+    g.setAttribute("class", "hidcard" + (looked ? " looked" : ""));
+    g.setAttribute("transform", `translate(${R.c1 - 0.95} ${R.ly + 1.1}) rotate(8)`);   // right-hand side, the row under the name plaque (pieces stand lower)
+    g.innerHTML = `<rect width=".7" height="1.05" rx=".08" fill="#7a1f2b" stroke="#f3ead6" stroke-width=".07"/><path d="M.15 .2h.4M.15 .4h.4M.15 .6h.4M.15 .8h.4" stroke="#b5485a" stroke-width=".05"/>${looked ? `<path d="M.14 .55l.17 .17.3-.36" fill="none" stroke="#f3ead6" stroke-width=".1" stroke-linecap="round"/>` : ""}`;
+    svg.insertBefore(g, $(".hits", svg));
+  }
   // case-file odds for each room, written under the room name
   $$(".roomodds", svg).forEach((x) => x.remove());
   if (settings.odds && notes && notes.prob) {
@@ -738,15 +765,17 @@ function renderHighlights(snap) {
 function updateNotes(snap) {
   const pub = snap.pub, me = snap.mySeat;
   if (me < 0 || !snap.mine) return;
-  const facts = factsFor(me, pub.n, snap.mine.hand, recordsFor(pub, snap.mine));
-  const key = JSON.stringify(facts) + pub.n;
+  // face-up leftovers / 2-player room cards are one more pile for the solver (see knowledge.js seatView)
+  const K = seatView(pub, snap.mine, me), facts = K.facts;
+  const key = JSON.stringify(facts) + pub.n + "|" + K.n;
   const needRank = snap.myTurn && (pub.phase === "suggest" || (pub.phase === "start" && canSuggestHere(pub)));
   if (key === notesKey && (!needRank || rankKey === key + pub.pos[pub.chars[me]].room)) { drawNotes(snap); return; }
   notesKey = key;
   const roomNow = pub.pos[pub.chars[me]].room;
-  askSolver({ n: pub.n, sizes: pub.sizes, facts, rank: needRank ? { me, room: roomNow, samples: 500, seed: pub.turnNo } : null }).then((r) => {
+  askSolver({ n: K.n, sizes: K.sizes, facts, rank: needRank ? { me, room: roomNow, samples: 500, seed: pub.turnNo, players: pub.n } : null }).then((r) => {
     if (notesKey !== key) return;
     if (!r.ok) return;
+    r.prob = toTable(r.prob, K.pile);   // case file at column n, the pile (if any) at n + 1
     try { notesEffects(r, snap); } catch (e) {}
     notes = r;
     if (r.ranked) { ranked = r.ranked; rankKey = key + roomNow; }
@@ -759,23 +788,26 @@ function drawNotes(snap) {
   const el = $("#notes"); if (!el) return;
   if (!notes) { el.innerHTML = `<div class="muted" style="padding:10px">Thinking…</div>`; return; }
   const n = pub.n;
-  const cols = pub.chars.map((c, i) => `<th style="color:${SUSPECT_COLORS[c]}">${i === me ? "You" : esc(E().short[c].slice(0, 3))}</th>`).join("");
+  // a pile column: the face-up leftovers ("Up") or the 2-player room cards ("Rm")
+  const pileCol = pub.faceUp && pub.faceUp.length ? "Up" : pub.hiddenRooms && pub.hiddenRooms.length ? "Rm" : "";
+  const cols = pub.chars.map((c, i) => `<th style="color:${SUSPECT_COLORS[c]}">${i === me ? "You" : esc(E().short[c].slice(0, 3))}</th>`).join("") + (pileCol ? `<th class="pile">${pileCol}</th>` : "");
   const cats = [["Suspects", 0, 6], ["Weapons", 6, 12], ["Rooms", 12, 21]];
   let rows = "";
   for (const [label, a, b] of cats) {
-    rows += `<tr class="cat"><td colspan="${n + 2}">${label}</td></tr>`;
+    rows += `<tr class="cat"><td colspan="${n + 2 + (pileCol ? 1 : 0)}">${label}</td></tr>`;
     for (let c = a; c < b; c++) {
       const pe = notes.prob[c][n];
       const mine = snap.mine.hand.includes(c);
       rows += `<tr class="${pe > 0.9995 ? "solved" : ""} ${mine ? "mine" : ""}"><td class="nm">${esc(cname(c))}</td>` +
-        pub.chars.map((_, p) => cellMark(notes.prob[c][p])).join("") +
+        pub.chars.map((_, p) => cellMark(notes.prob[c][p])).join("") + (pileCol ? cellMark(notes.prob[c][n + 1] || 0) : "") +
         `<td class="env" style="color:${pe === 0 ? "#5d6478" : heat(pe)}">${pe === 0 ? "✗" : pe > 0.9995 ? "✓" : settings.odds ? pct(pe) : ""}</td></tr>`;
     }
   }
   el.innerHTML = `<table><thead><tr><th style="text-align:left">Card</th>${cols}<th>File</th></tr></thead><tbody>${rows}</tbody></table>`;
   const top = notes.env[0];
   const envl = $("#envline");
-  if (envl && top) envl.innerHTML = `<div class="row between" style="font-size:13px"><span>Best guess: <b>${top.cards.map(sname).join(" · ")}</b></span>${settings.odds ? `<b style="color:${heat(top.p)}">${pct(top.p)}</b>` : ""}</div><div class="muted" style="font-size:12px">${notes.envCount} answers still possible${notes.exact ? "" : " (estimated)"}</div>`;
+  if (envl && top) envl.innerHTML = `<div class="row between" style="font-size:13px"><span>Best guess: <b>${top.cards.map(sname).join(" · ")}</b></span>${settings.odds ? `<b style="color:${heat(top.p)}">${pct(top.p)}</b>` : ""}</div><div class="muted" style="font-size:12px">${notes.envCount} answers still possible${notes.exact ? "" : " (estimated)"}</div>` +
+    (pub.faceUp && pub.faceUp.length ? `<div class="faceup">Face up: <b>${pub.faceUp.map(sname).join(" · ")}</b></div>` : "");
 }
 function cellMark(p) {
   if (p > 0.9995) return `<td><span class="y">✓</span></td>`;
@@ -873,9 +905,18 @@ function gameOver(snap) {
   sheet(`<h3>${pub.winner >= 0 ? (won ? "You solved it!" : esc(seatName(pub, pub.winner, snap)) + " solved it") : "Nobody solved it"}</h3>
     <div class="row" style="justify-content:center;gap:8px;margin:6px 0 10px">${pub.reveal.env.map((c, k) => `<div class="cardf lg turnup" style="animation-delay:${0.15 + k * 0.35}s">${cardSvg(settings.edition, c)}${cardBackHtml()}</div>`).join("")}</div>
     ${q != null ? `<p>Your questions found <b style="color:${heat(q)}">${Math.round(q * 100)}%</b> of the best possible information ${help("Question quality", "Each time you suggested, the notes compared what your question could teach you (in bits) with the best question available in that room. 100% means you always asked the best one.")}</p>` : ""}
-    <div class="stack" style="gap:3px">${hands}</div>
+    <div class="stack" style="gap:3px">${hands}${extraCards(pub)}</div>
     <div class="row" style="justify-content:flex-end;margin-top:10px">${canReplay() ? `<button class="btn" id="replay">Replay</button>` : ""}<button class="btn" data-close>Look at board</button><button class="btn primary" id="again">New game</button></div>`,
     (el) => { $("[data-close]", el).onclick = closeSheet; const rb = $("#replay", el); if (rb) rb.onclick = () => { closeSheet(); startReplay(); }; $("#again", el).onclick = () => { closeSheet(); store.del("local"); if (snap.mode === "online" && online) online.leave(); setupView(); }; });
+}
+
+/** Game over: the 2-player room cards and the face-up leftovers, after the hands. */
+function extraCards(pub) {
+  const line = (label, txt) => `<div class="row" style="font-size:13px;gap:6px"><i style="width:10px;display:inline-block"></i><b style="min-width:58px">${label}</b><span class="muted">${txt}</span></div>`;
+  let h = "";
+  if (pub.reveal.hidden && pub.reveal.hidden.length) h += line("Rooms", pub.reveal.hidden.map((x) => `${esc(sname(x.card))} (${esc(E().rooms[x.room])})`).join(", "));
+  if (pub.faceUp && pub.faceUp.length) h += line("Face up", pub.faceUp.map((c) => esc(sname(c))).join(", "));
+  return h;
 }
 
 // ------------------------------------------------------------------ replay (local games): every move and question again, with every card face up
@@ -1051,6 +1092,10 @@ function settingsView() {
     <div class="setrow"><div class="lbl">Show odds<small>Percentages on cards and rooms</small></div><label class="switch"><input type="checkbox" id="sOdds" ${settings.odds ? "checked" : ""}><span></span></label></div>
     <div class="setrow"><div class="lbl">Speed<small>Computer turns and walking</small></div>${seg("speed", [[0.6, "Slow"], [1, "Normal"], [2, "Fast"]])}</div>
   </div>
+  <div class="panel"><div class="label">House rules ${help("House rules", "Common ways people play at home. They apply to new games, also online, but not to the Daily or the guided game. The Rules sheet explains each one.")}</div>
+    <div class="setrow"><div class="lbl">Leftovers face up<small>4 or 5 players: equal hands, spares shown</small></div><label class="switch"><input type="checkbox" id="sFaceUp" ${settings.faceUp ? "checked" : ""}><span></span></label></div>
+    <div class="setrow"><div class="lbl">Quick moves<small>No dice: go straight to any room</small></div><label class="switch"><input type="checkbox" id="sQuick" ${settings.quick ? "checked" : ""}><span></span></label></div>
+  </div>
   <div class="panel"><div class="label">Sound &amp; effects</div><div id="fxSet"></div></div>
   <div class="panel"><div class="setrow"><div class="lbl">Rules<small>The whole rulebook, in short sections</small></div><button class="btn small" id="sRules">Rules</button></div>
     <div class="setrow"><div class="lbl">Guided game<small>A first game that shows you each step</small></div><button class="btn small" id="sTut">Replay tutorial</button></div></div>
@@ -1063,6 +1108,8 @@ function settingsView() {
   })));
   FX.renderSettings($("#fxSet", el));
   $("#sOdds", el).onchange = (e) => { settings.odds = e.target.checked; saveSettings(); if (snapNow) { if (snapNow.pub && gameEl) renderGame(snapNow, null); renderHighlights(snapNow); drawNotes(snapNow); } };
+  $("#sFaceUp", el).onchange = (e) => { settings.faceUp = e.target.checked; saveSettings(); };
+  $("#sQuick", el).onchange = (e) => { settings.quick = e.target.checked; saveSettings(); };
   const q = $("#sQuit", el);
   if (q) q.onclick = () => sheet(`<h3>${snapNow.mode === "online" ? "Leave this room?" : "Quit this game?"}</h3><div class="row" style="justify-content:flex-end"><button class="btn ghost" data-close>Cancel</button><button class="btn danger" id="qYes">${snapNow.mode === "online" ? "Leave" : "Quit"}</button></div>`,
     (s) => { $("[data-close]", s).onclick = closeSheet; $("#qYes", s).onclick = quitGame; });

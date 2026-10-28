@@ -1,5 +1,7 @@
 // Measures computer strength by self-play.  node tools/sim.js <games> <matchup> [rules]
 //   matchup: "2v1" = one Hard vs three Medium, "1v0", "2v0", "seat" (all Medium, win rate by seat)
+//   house rules (optional 6th arg, comma list): faceUp, quick   e.g. node tools/sim.js 400 2v1 classic 4 faceUp
+//   players 2 = the 2-player game with four face-down room cards
 // The special player rotates through every seat so going first doesn't skew it.
 import { game, publicView, privateView } from "../js/game.js";
 import { RULESETS } from "../js/cards.js";
@@ -9,6 +11,7 @@ const N = +(process.argv[2] || 200);
 const matchup = process.argv[3] || "2v1";
 const R = RULESETS[process.argv[4] || "classic"];
 const players = +(process.argv[5] || 4);
+const house = (process.argv[6] || "").split(",").filter(Boolean);
 const rng = mulberry32(20261019 + matchup.length * 7 + players);
 
 let specialWins = 0, decided = 0, turns = 0, solveNoOne = 0;
@@ -19,7 +22,7 @@ for (let g = 0; g < N; g++) {
   let levels;
   if (matchup === "seat") levels = new Array(players).fill(1);
   else { const [a, b] = matchup.split("v").map(Number); levels = new Array(players).fill(b); levels[seat] = a; }
-  let s = game.setup(players, { levels, dice: R.dice, stay: R.stay, upTo: R.upTo }, rng, levels.map(() => ({ kind: "computer" })));
+  let s = game.setup(players, { levels, dice: R.dice, stay: R.stay, upTo: R.upTo, faceUp: house.includes("faceUp"), quick: house.includes("quick") }, rng, levels.map(() => ({ kind: "computer" })));
   let steps = 0;
   while (!s.over && steps++ < 20000) {
     const who = game.toAct(s)[0];
@@ -33,7 +36,7 @@ for (let g = 0; g < N; g++) {
   if (s.winner === seat) specialWins++;
 }
 const out = {
-  matchup, players, rules: process.argv[4] || "classic", games: N,
+  matchup, players, rules: process.argv[4] || "classic", house: house.join(",") || null, games: N,
   specialWinRate: matchup === "seat" ? null : +(specialWins / N).toFixed(4),
   fairShare: +(1 / players).toFixed(4),
   seatWinRate: seatWins.map((w) => +(w / N).toFixed(4)),

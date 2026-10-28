@@ -9,7 +9,7 @@ export const store = {
   set(k, v) { try { localStorage.setItem("clue." + k, JSON.stringify(v)); } catch (e) {} },
   del(k) { try { localStorage.removeItem("clue." + k); } catch (e) {} },
 };
-export const settings = Object.assign({ edition: "classic", rules: "classic", level: 2, odds: true, speed: 1, players: 4, me: 0 }, store.get("settings", {}));
+export const settings = Object.assign({ edition: "classic", rules: "classic", level: 2, odds: true, speed: 1, players: 4, me: 0, faceUp: false, quick: false }, store.get("settings", {}));
 export const saveSettings = () => store.set("settings", settings);
 let toastT = null;
 export function toast(msg, ms = 2200) {

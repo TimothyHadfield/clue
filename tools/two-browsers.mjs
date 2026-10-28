@@ -1,5 +1,5 @@
 // Two separate headless browsers play an online Clue room to the end.
-//   node tools/two-browsers.mjs [url] [--engine webkit|chromium] [--shots dir]
+//   node tools/two-browsers.mjs [url] [--engine webkit|chromium] [--shots dir] [--two]
 // Proves: create room, join by code, hands stay private, a reload mid-game puts you back, the game ends for both.
 import { createRequire } from "node:module";
 import { homedir } from "node:os";
@@ -29,6 +29,8 @@ for (const [n, p] of [["A", A], ["B", B]]) {
 }
 const snap = (p) => p.evaluate(() => JSON.parse(JSON.stringify(window.__clue.snap || null)));
 
+// --two: a 2-player room (four cards face down in rooms) with quick moves
+if (args.includes("--two")) for (const p of [A, B]) await p.context().addInitScript(() => { if (!localStorage.getItem("clue.settings")) localStorage.setItem("clue.settings", JSON.stringify({ players: 2, quick: true })); });
 await A.goto(url); await B.goto(url);
 await A.click("#goOnline"); await A.fill("#oName", "Alice"); await A.click("#oCreate");
 await A.waitForSelector("#lseats", { timeout: 60000 });

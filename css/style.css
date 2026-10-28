@@ -444,3 +444,13 @@ html.fx-still *, html.fx-still *::before, html.fx-still *::after { animation: no
 /* ---- replay at the end of a game */
 .game.replaying .bar .acts .btn { min-width: 44px; }
 .rp-n { display: inline-block; min-width: 44px; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+
+/* ---- house rules and the 2-player room cards (wave 3) */
+.hidcard.looked { opacity: .55; }
+.hidcard { pointer-events: none; }
+.envline .faceup { font-size: 12px; margin-top: 2px; }
+.notes th.pile { color: #cdbf9e; }
+/* rules sheet: links readable on the cream paper; videos as a short list */
+.coach-rules-body a { color: #2a4f9e; text-decoration: underline; }
+.coach-rules-body ul.vids { padding-left: 18px; margin: 6px 0; }
+.coach-rules-body ul.vids li { margin: 6px 0; }

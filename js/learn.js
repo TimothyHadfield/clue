@@ -6,7 +6,7 @@ export async function initLearn(el) {
   if (done) return;
   done = true;
   let S = null;
-  try { S = await (await fetch("data/strength.json?v=1")).json(); } catch (e) { S = null; }
+  try { S = await (await fetch("data/strength.json?v=2")).json(); } catch (e) { S = null; }
   const bar = (p) => `<div class="meter"><i style="width:${Math.round(p * 100)}%;background:${heat(p * 1.6)}"></i></div>`;
   const strength = S ? `
     <div class="panel"><h2>How strong are the computers? ${help("How this was measured", S.how)}</h2>

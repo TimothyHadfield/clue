@@ -24,7 +24,18 @@
     const b = (id) => { const x = q("#" + id); if (x && !x.disabled) { x.click(); seen.push(id); return true; } return false; };
     if (snap && snap.myTurn) {
       const ph = snap.pub.phase;
-      if (ph === "start") { if (!b("bSug")) if (!b("bPass")) b("bRoll"); }
+      if (ph === "start") {
+        // quick moves: no Roll button, tap a lit room
+        if (!b("bSug")) if (!b("bPass")) if (!b("bRoll")) {
+          // quick moves: prefer a room card not yet looked at (2 players), else a random lit room
+          const lit = [...document.querySelectorAll(".room-hit.can")];
+          const looked = new Set((snap.mine.seen || []).filter((x) => x.i < 0).map((x) => x.room));
+          const fresh = lit.filter((r) => (snap.pub.hiddenRooms || []).includes(+r.dataset.room) && !looked.has(+r.dataset.room));
+          const pool = fresh.length ? fresh : lit;
+          const room = pool[Math.floor(Math.random() * pool.length)];
+          if (room) room.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        }
+      }
       else if (ph === "move") {
         const room = q(".room-hit.can"); const sq = q(".reach");
         if (room) room.dispatchEvent(new MouseEvent("click", { bubbles: true }));

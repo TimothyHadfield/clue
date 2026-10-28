@@ -30,3 +30,31 @@ export function handSizes(n, first = 0) {
   for (let i = 0; i < 18; i++) s[(first + i) % n]++;
   return s;
 }
+
+/** Records with "shown" filled in from this seat's private notes. */
+export function recordsFor(pub, mine) {
+  const shown = new Map((mine.seen || []).filter((x) => x.i >= 0).map((x) => [x.i, x.card]));
+  return pub.log.map((r, i) => (r.t === "suggest" && shown.has(i) ? Object.assign({}, r, { shown: shown.get(i) }) : r));
+}
+
+/**
+ * What one seat knows, ready for the solver. Cards that are in no hand (the face-up leftovers, or the
+ * 2-player room cards) form one extra pile, owner n; the case file is then owner n + 1.
+ *   { n: owners for the solver, sizes, facts, pile: n or -1, players: pub.n }
+ * Use toTable() on the solver's prob so the case file is always column pub.n (and the pile pub.n + 1).
+ */
+export function seatView(pub, mine, seat) {
+  const n = pub.n, up = pub.faceUp || [], hid = pub.hiddenRooms || [];
+  const facts = factsFor(seat, n, mine.hand, recordsFor(pub, mine));
+  const pileSize = up.length + hid.length;
+  if (!pileSize) return { n, sizes: pub.sizes, facts, pile: -1, players: n };
+  for (const c of up) facts.push({ t: "has", p: n, c });
+  for (const x of mine.seen || []) if (x.i < 0) facts.push({ t: "has", p: n, c: x.card });
+  return { n: n + 1, sizes: pub.sizes.concat([pileSize]), facts, pile: n, players: n };
+}
+
+/** Solver columns [hands..., pile, file] → table columns [hands..., file, pile]. */
+export function toTable(prob, pile) {
+  if (pile == null || pile < 0) return prob;
+  return prob.map((r) => r.slice(0, pile).concat([r[pile + 1], r[pile]]));
+}

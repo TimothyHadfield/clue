@@ -25,8 +25,28 @@
       "label": "Hard vs 3 Easy",
       "win": 0.8305,
       "note": "2000 games."
+    },
+    {
+      "label": "Hard vs Medium, 2 players",
+      "win": 0.68,
+      "note": "1000 games, the 2-player rules (four cards face down in rooms). Fair share is 50%. Hard drags its rival's pawn away with its questions; without that it was 50%."
+    },
+    {
+      "label": "Medium vs Easy, 2 players",
+      "win": 0.753,
+      "note": "1000 games. Hard vs Easy: 79%."
     }
   ],
+  "house": {
+    "how": "600 games each, 2026-10-28, tools/sim.js with the house rule named. The ladder Hard > Medium > Easy holds under every option.",
+    "rows": [
+      ["Leftovers face up, 4 players", "Hard vs 3 Medium 41.8%", "Medium vs 3 Easy 77.2%"],
+      ["Leftovers face up, 5 players", "Hard vs 4 Medium 32.2% (fair 20%)", "Medium vs 4 Easy 76.5%"],
+      ["Quick moves, 4 players", "Hard vs 3 Medium 54.3%", "Medium vs 3 Easy 77.2%, Hard vs 3 Easy 85.3%"],
+      ["Quick moves, 2 players", "Hard vs Medium 74.2%", "Medium vs Easy 80.0%"],
+      ["2 players, Cluedo rules", "Hard vs Medium 66.0%", "Medium vs Easy 77.7%"]
+    ]
+  },
   "seat": [
     0.3175,
     0.2425,

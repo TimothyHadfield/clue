@@ -13,6 +13,7 @@ self.onmessage = (e) => {
       const cands = [];
       const rooms = rank.room != null ? [rank.room] : [...Array(9).keys()];
       for (const r of rooms) for (let su = 0; su < 6; su++) for (let w = 6; w < 12; w++) cands.push([su, w, 12 + r]);
+      if (rank.players) s.players = rank.players;
       out.ranked = rankSuggestions(s, rank.me, cands, rng, rank.samples || 500).slice(0, rank.keep || 36);
     }
     out.ms = performance.now() - t0;

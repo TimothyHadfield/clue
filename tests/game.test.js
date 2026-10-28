@@ -72,9 +72,9 @@ test("deal: 3 in the file, 18 dealt one at a time, uneven hands for 4 and 5", ()
   assert.equal(new Set(s.weaponRoom).size, 6, "each weapon starts in a different room");
 });
 
-test("setup: 3 to 6 players, all 6 tokens on their start squares, Scarlet's side starts", () => {
-  assert.equal(game.minSeats, 3); assert.equal(game.maxSeats, 6);
-  for (let n = 3; n <= 6; n++) {
+test("setup: 2 to 6 players (2 only with the room cards, tests/house.test.js), all 6 tokens on their start squares, Scarlet's side starts", () => {
+  assert.equal(game.minSeats, 2); assert.equal(game.maxSeats, 6);
+  for (let n = 2; n <= 6; n++) {
     const s = setup(n, {}, mulberry32(n), []);
     assert.equal(s.pos.length, 6, "spare suspects stay on the board");
     s.pos.forEach((p, k) => assert.equal(p.sq, STARTS[k]));

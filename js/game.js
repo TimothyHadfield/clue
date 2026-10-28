@@ -13,7 +13,7 @@ import { reach, STARTS, PASSAGE, DOOR_ROOMS } from "./board.js";
 import { handSizes } from "./knowledge.js";
 import { botAction } from "./ai.js";
 
-export const MIN = 3, MAX = 6;
+export const MIN = 2, MAX = 6;   // 2 players only with the four room cards (Hasbro 2016/2023 two-player game)
 
 function shuffle(a, rng) {
   for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(rng() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
@@ -23,11 +23,21 @@ const inRange = (x, lo, hi) => Number.isInteger(x) && x >= lo && x < hi;
 const roll = (rng) => 1 + Math.floor(rng() * 6);
 
 export function setup(n, options = {}, rng = Math.random, seats = []) {
-  if (n < MIN || n > MAX) throw new Error("Clue is for 3 to 6 players");
+  if (n < MIN || n > MAX) throw new Error("Clue is for 2 to 6 players");
   const chars = (options.chars && options.chars.length === n ? options.chars.slice() : [...Array(n).keys()]).sort((a, b) => a - b);
   if (new Set(chars).size !== n || chars.some((c) => c < 0 || c > 5)) throw new Error("each player needs a different suspect");
   const env = [Math.floor(rng() * 6), 6 + Math.floor(rng() * 6), 12 + Math.floor(rng() * 9)];
-  const rest = shuffle([...Array(21).keys()].filter((c) => !env.includes(c)), rng);
+  let rest = shuffle([...Array(21).keys()].filter((c) => !env.includes(c)), rng);
+  // 2 players: four of the cards go face down into four different rooms first (Hasbro 2016/2023)
+  let hidden = null;
+  if (n === 2) {
+    const rooms = shuffle([...Array(9).keys()], rng).slice(0, 4);
+    hidden = rooms.map((room, k) => ({ room, card: rest[k] }));
+    rest = rest.slice(4);
+  }
+  // house rule: everyone gets the same number of cards; the few left over lie face up for all to see
+  let faceUp = [];
+  if (options.faceUp && rest.length % n) { const k = rest.length % n; faceUp = rest.slice(rest.length - k).sort((a, b) => a - b); rest = rest.slice(0, rest.length - k); }
   const hands = Array.from({ length: n }, () => []);
   rest.forEach((c, i) => hands[i % n].push(c));           // dealt one at a time, first player first
   hands.forEach((h) => h.sort((a, b) => a - b));
@@ -38,6 +48,8 @@ export function setup(n, options = {}, rng = Math.random, seats = []) {
       dice: options.dice === 2 ? 2 : 1,              // classic North American Clue: one die
       stay: !!options.stay,                          // UK / newer rules: may stay in a room and suggest again
       upTo: !!options.upTo,                          // newer rules: move up to the roll
+      faceUp: !!options.faceUp,                      // house rule: equal hands, leftovers face up
+      quick: !!options.quick,                        // house rule: no dice, go straight to any room
       edition: options.edition || "classic", levels: options.levels || [],
     },
     names: seats.map((s, i) => (s && s.name) || "Player " + (i + 1)),
@@ -58,6 +70,8 @@ export function setup(n, options = {}, rng = Math.random, seats = []) {
     envSeen: new Array(n).fill(false),
     winner: -1, over: false,
     last: null,                                    // last public event, for animation
+    faceUp,                                        // cards everyone can see (house rule)
+    hidden,                                        // 2 players: [{room, card}] face down in rooms
   };
 }
 
@@ -70,7 +84,11 @@ const blockedSquares = (s, exceptSuspect) => {
   s.pos.forEach((p, i) => { if (i !== exceptSuspect && p.sq != null) b.add(p.sq); });
   return b;
 };
+/** Quick moves: any room but the one you're in (no going out and straight back in). */
+export const quickRooms = (place) => [...Array(9).keys()].filter((r) => r !== place.room).map((room) => ({ room, steps: 0 }));
+export const canQuickMove = (s) => !!s.opts.quick && (s.phase === "start" || s.phase === "move");
 export function movesFor(s) {
+  if (s.opts.quick) return canQuickMove(s) ? { squares: [], rooms: quickRooms(placeOf(s, s.turn)) } : { squares: [], rooms: [] };
   if (!s.roll) return { squares: [], rooms: [] };
   const me = s.chars[s.turn];
   return reach(s.pos[me], s.roll.total, blockedSquares(s, me), { upTo: s.opts.upTo });
@@ -125,6 +143,14 @@ function advanceAsking(s) {
   }
 }
 
+/** 2 players: walking into a room that holds a face-down card lets you look at it (only you). */
+function peek(s, seat, room) {
+  const h = s.hidden && s.hidden.find((x) => x.room === room);
+  if (!h || s.seen[seat].some((x) => x.i < 0 && x.room === room)) return;
+  s.seen[seat].push({ i: -1, from: -1, card: h.card, room });
+  s.last = Object.assign({}, s.last, { peek: true, room });
+}
+
 export function apply(s, seat, a, rng = Math.random) {
   if (s.over) throw new Error("game over");
   if (!a || typeof a.type !== "string") throw new Error("no action");
@@ -141,6 +167,7 @@ export function apply(s, seat, a, rng = Math.random) {
   switch (a.type) {
     case "roll": {
       if (s.phase !== "start") throw new Error("you already moved");
+      if (s.opts.quick) { s.roll = { dice: [], total: 0 }; s.phase = "move"; s.last = { t: "roll", by: seat, dice: [] }; return s; }
       const dice = [roll(rng)]; if (s.opts.dice === 2) dice.push(roll(rng));
       s.roll = { dice, total: dice.reduce((x, y) => x + y, 0) };
       s.phase = "move";
@@ -155,20 +182,24 @@ export function apply(s, seat, a, rng = Math.random) {
       s.pos[me] = { room: PASSAGE[from] };
       s.entered = true; s.phase = "suggest";
       s.last = { t: "passage", by: seat, from, to: PASSAGE[from] };
+      peek(s, seat, PASSAGE[from]);
       return s;
     }
     case "move": {
-      if (s.phase !== "move") throw new Error("roll first");
+      const quickStart = s.phase === "start" && !!s.opts.quick;   // quick moves: no roll needed
+      if (s.phase !== "move" && !quickStart) throw new Error("roll first");
       const m = movesFor(s);
       const from = s.pos[me];
       if (a.room != null) {
         if (!m.rooms.some((x) => x.room === a.room)) throw new Error("you can't reach that room");
+        if (quickStart) s.roll = { dice: [], total: 0 };
         s.pos[me] = { room: a.room }; s.entered = true; s.phase = "suggest";
       } else {
         if (!m.squares.includes(a.sq)) throw new Error("you can't reach that square");
         s.pos[me] = { sq: a.sq }; s.phase = "post";
       }
       s.last = { t: "move", by: seat, from, to: s.pos[me], path: a.path || null };
+      if (a.room != null) peek(s, seat, a.room);
       return s;
     }
     case "suggest": {
@@ -227,9 +258,11 @@ export function publicView(s) {
     entered: s.entered, suggested: s.suggested, summoned: s.summoned,
     sugg: s.sugg ? { by: s.sugg.by, cards: s.sugg.cards, passes: s.sugg.passes, asking: s.sugg.asking } : null,
     log: s.log, out: s.out, winner: s.winner, over: s.over, last: s.last,
-    shownCount: s.seen.map((x) => x.length),
+    shownCount: s.seen.map((x) => x.filter((y) => y.i >= 0).length),
+    faceUp: s.faceUp || [],
+    hiddenRooms: s.hidden ? s.hidden.map((h) => h.room) : [],
     // the envelope and every hand are turned face up only when the game ends
-    reveal: s.over ? { env: s.env, hands: s.hands } : null,
+    reveal: s.over ? { env: s.env, hands: s.hands, hidden: s.hidden || [] } : null,
   };
 }
 
@@ -244,7 +277,7 @@ export function privateView(s, seat) {
 /** A plain legal move for any phase: used when a computer's own choice fails, so the table never freezes. */
 export function safeAction(s, seat) {
   if (s.phase === "disprove") return { type: "show", card: s.hands[seat].find((c) => s.sugg.cards.includes(c)) };
-  if (s.phase === "start") return canPassage(s) ? { type: "passage" } : { type: "roll" };
+  if (s.phase === "start") return canPassage(s) ? { type: "passage" } : s.opts.quick ? { type: "move", room: movesFor(s).rooms[0].room } : { type: "roll" };
   if (s.phase === "move") {
     const m = movesFor(s);
     if (m.rooms.length) return { type: "move", room: m.rooms[0].room };

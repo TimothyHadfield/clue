@@ -36,7 +36,7 @@ export function rulesSheet(E) {
   const s = E.suspects, w = E.weapons, r = E.rooms;
   return {
     title: "Clue rules",
-    intro: "Three to six players race to work out who did it, with which weapon, in which room.",
+    intro: "Two to six players race to work out who did it, with which weapon, in which room.",
     foot: "Fan-made summary in our own words. Not affiliated with any game publisher.",
     sections: [
       { id: "goal", title: "The goal", short: "Goal", html: `<p>One suspect card, one weapon card and one room card are hidden in the case file. Be the first to name all three correctly.</p>
@@ -60,6 +60,16 @@ export function rulesSheet(E) {
         <tr><td>Cluedo</td><td>2</td><td>Yes</td><td>The full roll in the hallway</td></tr>
         <tr><td>Newer</td><td>2</td><td>Yes</td><td>Up to the roll</td></tr></table>
         <p>Choose the rule set in Settings. It applies to new games.</p>` },
+      { id: "house", title: "Two players and house rules", short: "House rules", html: `<p><b>Two players.</b> Before dealing, four of the 18 cards go face down into four different rooms; the other 14 are dealt, 7 each. When you walk into a room that holds a card, you look at it secretly. Pick 2 players on the Play screen.</p>
+        <p><b>Leftover cards face up</b> (house rule). With 4 or 5 players everyone gets the same number of cards, and the 2 or 3 left over lie face up for all to see.</p>
+        <p><b>Quick moves</b> (house rule). No dice: on your turn, go straight to any other room.</p>
+        <p>Turn the house rules on in Settings. They apply to new games, also online.</p>` },
+      { id: "videos", title: "Videos", short: "Videos", html: `<ul class="vids">
+        <li><a href="https://www.youtube.com/watch?v=Vib1LsK4Ln4" target="_blank" rel="noopener">How to play Clue, full tutorial</a> · Watch It Played</li>
+        <li><a href="https://www.youtube.com/watch?v=4zUx5uNVsJs" target="_blank" rel="noopener">How to play Clue in 4 minutes (2024 rules)</a> · Triple S Games</li>
+        <li><a href="https://www.youtube.com/watch?v=DN5JGrxSC1E" target="_blank" rel="noopener">Advanced tips and strategies</a> · Puzzling Games</li>
+        <li><a href="https://www.youtube.com/watch?v=g_F5H7sYd3Y" target="_blank" rel="noopener">Note-taking: the number system</a> · What's What</li></ul>
+        <p class="tip">These open YouTube in a new tab.</p>` },
       { id: "notes", title: "Your notes", short: "Notes", html: `<p>The notes count every way the cards could have been dealt that fits what you've seen. ✓ means certain, ✗ means ruled out, and a % is the share of possible deals where that card is in that place.</p>
         <p>Best question picks the suspect and weapon whose answer would narrow things down the most. Using it, Best guess or Undo makes a game "with help" in My stats, so it doesn't change your rating.</p>` },
     ],

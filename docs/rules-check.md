@@ -17,7 +17,7 @@ Sources:
 | Cards | 6 suspects + 6 weapons + 9 rooms = 21 | PB1998 | card facts |
 | Envelope | 1 of each kind | PB1998 | deal |
 | Dealt | 18 cards, one at a time clockwise; with 4 players the hands are 5,5,4,4, and with 5 players 4,4,4,3,3 | PB1998 | deal |
-| Players | 3 to 6 | WP (classic box) | setup |
+| Players | 3 to 6; 2 with the room cards (below) | WP (classic box), H2016/H2023 | setup, house |
 | Board | 24 × 25 squares, 188 hallway squares, 9 rooms, 17 doors | grid sources | board |
 | Doors per room | Kitchen 1, Ballroom 4, Conservatory 1, Dining 2, Billiard 2, Library 2, Lounge 1, Hall 3, Study 1 | grid sources | board |
 | Passages | Kitchen ↔ Study, Conservatory ↔ Lounge | UK1996, WP | board, passage |
@@ -70,11 +70,25 @@ Sources:
 
 The card names (Classic / Cluedo / 2016 / 2023) are a separate setting, following the WP edition table and H2023.
 
+## Two players and house rules (2026-10-28, tests/house.test.js + tests/house.browser.mjs)
+
+Each is off by default (2 players only when you pick 2) and works with every rule set, against computers and online.
+
+| Option | How it's built | Source | Why this one |
+|---|---|---|---|
+| **2 players** | Before the deal, 4 of the 18 cards go face down into 4 different random rooms; 14 are dealt, 7 each. Walking (or taking a passage) into such a room lets you look at its card, once, secretly; the table only sees that you looked. Being pulled in by a suggestion doesn't count. | H2016 and H2023 "Two-player (or team) game" (same text in both; checked in the PDFs) | The official answer to "Clue needs 3"; the most asked-for missing mode |
+| **Leftovers face up** (house rule) | With 4 or 5 players everyone gets the same number of cards (4 / 3) and the 2 / 3 left over lie face up for everyone. 3 and 6 players: no change | 2011 edition setup ("leftover cards may be placed faceup", summarised at [officialgamerules.org](https://officialgamerules.org/game-rules/clue/)); WP: the 2008 edition also deals evenly; the Clue card game does the same ([gamerules.com](https://gamerules.com/rules/clue-suspect-card-game/)) | The commonest fix for "uneven hands are unfair" |
+| **Quick moves** (house rule) | No dice: on your turn, go straight into any room except the one you're in (secret passages still work). Rolling is never needed. | Closest written form: "Speed Moves" (move to an adjacent room or take a passage) at [ultraboardgames.com/clue/variants](https://ultraboardgames.com/clue/variants.php); H2023 also suggests corner rooms "for a speedier game". Ours is the broader "any room" reading | Cuts a 4-player game from ~35 to ~16 turns; pure deduction |
+
+Not added: "suggest from anywhere" (makes the room card free to ask about, so it changes the deduction more than it speeds it up) and "accuse only in the centre" (the classic board's centre is not a room you can walk into).
+
+How the notes and computers know these: the face-up cards / room cards are one more "pile" owner in the solver (`seatView` in js/knowledge.js); the pile never answers a question (`players` in `rankSuggestions`). Ladder per option: data/strength.json `house`.
+
 ## Not built (on purpose)
 
 - **UK answering to the right.** UK1996 has the player on your right answer first. We always go to the left.
 - **The 2016+ board changes** (Peacock 9 steps, the squared-off Conservatory door). The classic grid is used for every edition.
-- **Magnifier dice faces and Clue cards** (H2016, H2023), and the **2-player variant** (H2016, H2023).
+- **Magnifier dice faces and Clue cards** (H2016, H2023). (The 2-player variant was added 2026-10-28, above.)
 - **Rolling for first player** (UK1996, H2023). Scarlet always starts.
 
 ## Status
